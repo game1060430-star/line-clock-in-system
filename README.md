@@ -39,6 +39,7 @@
 - GitHub Repo: <https://github.com/game1060430-star/line-clock-in-system>
 - 前端網站: <https://game1060430-star.github.io/line-clock-in-system/>
 - Google Sheet: <https://docs.google.com/spreadsheets/d/19w7HghXXignqEb653WOu4atkyUhsQ2t5qsJhC9FGaY4/edit>
+- LIFF ID: `2009988841-I1LdubR2`
 
 ## Google Sheet 設定
 
