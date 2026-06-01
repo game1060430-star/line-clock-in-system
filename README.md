@@ -34,6 +34,12 @@
 - `index.html`：LIFF 手機前端，可直接本機開啟測試
 - `google-apps-script/Code.gs`：Google Apps Script 後端
 
+## 目前已建立的網址
+
+- GitHub Repo: <https://github.com/game1060430-star/line-clock-in-system>
+- 前端網站: <https://game1060430-star.github.io/line-clock-in-system/>
+- Google Sheet: <https://docs.google.com/spreadsheets/d/19w7HghXXignqEb653WOu4atkyUhsQ2t5qsJhC9FGaY4/edit>
+
 ## Google Sheet 設定
 
 1. 建立一個新的 Google Sheet。
