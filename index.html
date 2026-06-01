@@ -1,0 +1,1142 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>LINE 打卡系統</title>
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    :root {
+      --bg: #f5f7f4;
+      --panel: #ffffff;
+      --text: #16211b;
+      --muted: #66736c;
+      --line: #dfe7e1;
+      --primary: #06c755;
+      --primary-dark: #049846;
+      --blue: #2f6f9f;
+      --amber: #ad6a21;
+      --red: #c44545;
+      --shadow: 0 10px 28px rgba(23, 33, 28, 0.08);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .app { max-width: 1080px; margin: 0 auto; padding: 14px; }
+    .topbar {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      background: var(--primary);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 900;
+      box-shadow: 0 8px 18px rgba(6, 199, 85, 0.25);
+      flex: 0 0 auto;
+    }
+    .brand h1 { margin: 0; font-size: 22px; line-height: 1.15; }
+    .brand p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+    .profile {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+    .avatar {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: #dcece3;
+      display: grid;
+      place-items: center;
+      color: var(--primary-dark);
+      font-weight: 800;
+      overflow: hidden;
+    }
+    .avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .profile-name { font-weight: 800; font-size: 14px; white-space: nowrap; }
+    .profile-status { color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .hero {
+      background: linear-gradient(120deg, rgba(6, 199, 85, 0.94), rgba(47, 111, 159, 0.84)), #167a45;
+      border-radius: 8px;
+      color: #fff;
+      padding: 18px;
+      margin-bottom: 12px;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 16px;
+      overflow: hidden;
+    }
+    .hero h2 { margin: 0 0 8px; font-size: 28px; }
+    .hero p { margin: 0; color: rgba(255,255,255,0.88); line-height: 1.65; font-size: 14px; }
+    .hero-visual {
+      min-height: 118px;
+      border: 1px solid rgba(255,255,255,0.26);
+      border-radius: 8px;
+      background: rgba(255,255,255,0.12);
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 7px;
+      padding: 12px;
+      align-content: center;
+    }
+    .day-cell {
+      aspect-ratio: 1;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.22);
+      border: 1px solid rgba(255,255,255,0.18);
+      position: relative;
+    }
+    .day-cell.on::after {
+      content: "";
+      position: absolute;
+      inset: 28%;
+      border-radius: 50%;
+      background: #fff;
+    }
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      padding: 8px 0;
+      background: var(--bg);
+    }
+    .tab {
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      font-weight: 900;
+    }
+    .tab.active { border-color: var(--primary); background: var(--primary); color: #fff; }
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 12px;
+      align-items: start;
+    }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+      margin-bottom: 12px;
+    }
+    .panel h3 { margin: 0 0 12px; font-size: 17px; }
+    .clock-card { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .clock-face {
+      grid-column: 1 / -1;
+      display: grid;
+      place-items: center;
+      min-height: 156px;
+      border-radius: 8px;
+      background: #eef7f1;
+      border: 1px solid #d6eadc;
+      text-align: center;
+      padding: 18px;
+    }
+    .time-now { font-size: clamp(34px, 8vw, 60px); font-weight: 900; line-height: 1; }
+    .date-now { color: var(--muted); margin-top: 8px; font-size: 14px; }
+    .btn {
+      min-height: 46px;
+      border: 0;
+      border-radius: 8px;
+      color: #fff;
+      font-weight: 900;
+      padding: 11px 13px;
+      display: inline-flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn.primary { background: var(--primary); }
+    .btn.blue { background: var(--blue); }
+    .btn.amber { background: var(--amber); }
+    .btn.red { background: var(--red); }
+    .btn.ghost { background: #eef3ef; color: var(--text); border: 1px solid var(--line); }
+    .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    label { display: block; font-weight: 800; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      min-height: 42px;
+      padding: 9px 10px;
+      background: #fbfcfb;
+      color: var(--text);
+    }
+    textarea { min-height: 74px; resize: vertical; }
+    input:focus, select:focus, textarea:focus {
+      outline: 3px solid rgba(6, 199, 85, 0.18);
+      border-color: var(--primary);
+      background: #fff;
+    }
+    .stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .stat { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fbfcfb; }
+    .stat span { color: var(--muted); font-size: 12px; font-weight: 800; }
+    .stat b { display: block; margin-top: 5px; font-size: 22px; }
+    .record-list { display: grid; gap: 8px; }
+    .record {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fff;
+    }
+    .record strong { display: block; }
+    .record small { color: var(--muted); line-height: 1.5; }
+    .badge {
+      border-radius: 999px;
+      padding: 5px 8px;
+      font-size: 12px;
+      font-weight: 900;
+      background: #eef3ef;
+      color: var(--text);
+      white-space: nowrap;
+    }
+    .badge.ok { background: #e4f7eb; color: var(--primary-dark); }
+    .badge.warn { background: #fff0df; color: var(--amber); }
+    .badge.bad { background: #fdeaea; color: var(--red); }
+    .notice {
+      border-left: 4px solid var(--primary);
+      background: #f0f8f3;
+      padding: 10px 12px;
+      border-radius: 8px;
+      color: #29543b;
+      line-height: 1.55;
+      font-size: 13px;
+    }
+    .hidden { display: none !important; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 740px; }
+    th, td { border-bottom: 1px solid var(--line); padding: 9px 8px; text-align: left; vertical-align: top; }
+    th { background: #f0f5f1; color: var(--muted); font-size: 12px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .actions .btn { min-height: 40px; }
+    .employee-row, .shift-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+      padding: 8px 0;
+    }
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      border: 1px dashed var(--line);
+      padding: 18px;
+      border-radius: 8px;
+      background: #fbfcfb;
+    }
+    @media (max-width: 860px) {
+      .topbar, .hero, .layout { grid-template-columns: 1fr; }
+      .profile { justify-content: flex-start; }
+      .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 520px) {
+      .app { padding: 10px; }
+      .hero { padding: 14px; }
+      .hero h2 { font-size: 23px; }
+      .clock-card, .form-grid, .stat-grid { grid-template-columns: 1fr; }
+      .brand h1 { font-size: 19px; }
+      .profile { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">LINE</div>
+        <div>
+          <h1>LINE 打卡系統</h1>
+          <p>一間店使用，支援 GPS 範圍、容許時間、Google Sheet 紀錄與工時計算</p>
+        </div>
+      </div>
+      <div class="profile" aria-live="polite">
+        <div id="avatar" class="avatar">測</div>
+        <div>
+          <div id="profileName" class="profile-name">測試員工</div>
+          <div id="profileStatus" class="profile-status">測試模式</div>
+        </div>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <h2>從 LINE 開啟，手機直接上下班打卡</h2>
+        <p>管理者可設定店址、打卡範圍、班別與容許時間。正式版會把資料寫進 Google Sheet，並自動判斷準時、遲到、早退與計算工時。</p>
+      </div>
+      <div class="hero-visual" aria-hidden="true">
+        <div class="day-cell on"></div><div class="day-cell on"></div><div class="day-cell"></div><div class="day-cell on"></div><div class="day-cell on"></div><div class="day-cell"></div><div class="day-cell"></div>
+        <div class="day-cell on"></div><div class="day-cell"></div><div class="day-cell on"></div><div class="day-cell on"></div><div class="day-cell"></div><div class="day-cell on"></div><div class="day-cell"></div>
+        <div class="day-cell"></div><div class="day-cell on"></div><div class="day-cell on"></div><div class="day-cell"></div><div class="day-cell on"></div><div class="day-cell on"></div><div class="day-cell"></div>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="主要功能">
+      <button class="tab active" data-tab="clock">打卡</button>
+      <button class="tab" data-tab="records">紀錄</button>
+      <button class="tab" data-tab="people">員工</button>
+      <button class="tab" data-tab="settings">設定</button>
+    </nav>
+
+    <main class="layout">
+      <section>
+        <div id="tab-clock" class="tab-pane">
+          <div class="panel clock-card">
+            <div class="clock-face">
+              <div>
+                <div id="timeNow" class="time-now">--:--:--</div>
+                <div id="dateNow" class="date-now">讀取時間中</div>
+              </div>
+            </div>
+            <button id="clockInBtn" class="btn primary" type="button">上班打卡</button>
+            <button id="clockOutBtn" class="btn blue" type="button">下班打卡</button>
+          </div>
+
+          <div class="panel">
+            <h3>本次打卡資訊</h3>
+            <div class="form-grid">
+              <div>
+                <label for="shiftSelect">班別</label>
+                <select id="shiftSelect"></select>
+              </div>
+              <div>
+                <label for="employeeSelect">測試模式員工</label>
+                <select id="employeeSelect"></select>
+              </div>
+              <div style="grid-column: 1 / -1;">
+                <label for="noteInput">備註</label>
+                <textarea id="noteInput" placeholder="例如：補打卡原因、外出支援、交接事項"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-records" class="tab-pane hidden">
+          <div class="panel">
+            <h3>出勤查詢</h3>
+            <div class="form-grid">
+              <div>
+                <label for="filterMonth">月份</label>
+                <input id="filterMonth" type="month">
+              </div>
+              <div>
+                <label for="filterEmployee">員工</label>
+                <select id="filterEmployee"></select>
+              </div>
+            </div>
+            <div class="actions" style="margin-top: 10px;">
+              <button id="refreshBtn" class="btn ghost" type="button">重新整理</button>
+              <button id="exportCsvBtn" class="btn blue" type="button">匯出 CSV</button>
+              <button id="clearLocalBtn" class="btn red" type="button">清除本機測試資料</button>
+            </div>
+          </div>
+          <div class="panel table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>員工</th>
+                  <th>上班</th>
+                  <th>下班</th>
+                  <th>班別</th>
+                  <th>狀態</th>
+                  <th>工時</th>
+                  <th>距離</th>
+                  <th>備註</th>
+                </tr>
+              </thead>
+              <tbody id="recordsTable"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div id="tab-people" class="tab-pane hidden">
+          <div class="panel">
+            <h3>員工名單</h3>
+            <div id="employeeList"></div>
+          </div>
+          <div class="panel">
+            <h3>新增員工</h3>
+            <div class="form-grid">
+              <div>
+                <label for="newEmployeeName">姓名</label>
+                <input id="newEmployeeName" type="text" placeholder="王小明">
+              </div>
+              <div>
+                <label for="newEmployeeRate">時薪</label>
+                <input id="newEmployeeRate" type="number" min="0" step="1" placeholder="190">
+              </div>
+              <div style="grid-column: 1 / -1;">
+                <label for="newEmployeeLineId">LINE User ID</label>
+                <input id="newEmployeeLineId" type="text" placeholder="可先留空，正式上線後綁定">
+              </div>
+            </div>
+            <button id="addEmployeeBtn" class="btn primary" type="button" style="margin-top: 10px;">新增員工</button>
+          </div>
+        </div>
+
+        <div id="tab-settings" class="tab-pane hidden">
+          <div class="panel">
+            <h3>串接與店家設定</h3>
+            <div class="notice" style="margin-bottom: 12px;">
+              Apps Script URL 留空時會使用本機測試資料。正式上線後，請把 Google Apps Script 部署成網頁應用程式，再把網址貼到這裡。
+            </div>
+            <div class="form-grid">
+              <div>
+                <label for="apiUrlInput">Google Apps Script URL</label>
+                <input id="apiUrlInput" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+              </div>
+              <div>
+                <label for="liffIdInput">LIFF ID</label>
+                <input id="liffIdInput" type="text" placeholder="例如：2000000000-AbCdEfGh">
+              </div>
+              <div>
+                <label for="adminPinInput">管理 PIN</label>
+                <input id="adminPinInput" type="password" inputmode="numeric" placeholder="預設 1234">
+              </div>
+              <div>
+                <label for="siteNameInput">打卡地點名稱</label>
+                <input id="siteNameInput" type="text" placeholder="總店">
+              </div>
+              <div>
+                <label for="radiusInput">允許範圍（公尺）</label>
+                <input id="radiusInput" type="number" min="10" step="10">
+              </div>
+              <div>
+                <label for="latInput">緯度</label>
+                <input id="latInput" type="number" step="0.000001">
+              </div>
+              <div>
+                <label for="lngInput">經度</label>
+                <input id="lngInput" type="number" step="0.000001">
+              </div>
+            </div>
+            <div class="actions" style="margin-top: 10px;">
+              <button id="useCurrentLocationBtn" class="btn ghost" type="button">用目前位置設為店址</button>
+              <button id="saveSettingsBtn" class="btn primary" type="button">儲存設定</button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h3>班別與容許時間</h3>
+            <div id="shiftList"></div>
+            <div class="form-grid" style="margin-top: 10px;">
+              <div>
+                <label for="newShiftName">班別名稱</label>
+                <input id="newShiftName" type="text" placeholder="早班">
+              </div>
+              <div>
+                <label for="newShiftRate">休息分鐘</label>
+                <input id="newShiftBreak" type="number" min="0" step="1" value="0">
+              </div>
+              <div>
+                <label for="newShiftStart">上班時間</label>
+                <input id="newShiftStart" type="time" value="06:30">
+              </div>
+              <div>
+                <label for="newShiftEnd">下班時間</label>
+                <input id="newShiftEnd" type="time" value="14:30">
+              </div>
+              <div>
+                <label for="newShiftInGrace">上班容許分鐘</label>
+                <input id="newShiftInGrace" type="number" min="0" step="1" value="15">
+              </div>
+              <div>
+                <label for="newShiftOutGrace">下班容許分鐘</label>
+                <input id="newShiftOutGrace" type="number" min="0" step="1" value="15">
+              </div>
+            </div>
+            <button id="addShiftBtn" class="btn primary" type="button" style="margin-top: 10px;">新增班別</button>
+          </div>
+        </div>
+      </section>
+
+      <aside>
+        <div class="panel">
+          <h3>今日概況</h3>
+          <div class="stat-grid">
+            <div class="stat"><span>上班</span><b id="todayIn">0</b></div>
+            <div class="stat"><span>下班</span><b id="todayOut">0</b></div>
+            <div class="stat"><span>異常</span><b id="todayIssue">0</b></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>本月預估</h3>
+          <div class="stat-grid">
+            <div class="stat"><span>天數</span><b id="monthDays">0</b></div>
+            <div class="stat"><span>工時</span><b id="monthHours">0</b></div>
+            <div class="stat"><span>薪資</span><b id="monthPay">0</b></div>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>最新紀錄</h3>
+          <div id="recentRecords" class="record-list"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script>
+    const STORE_KEY = "line_clock_system_v2";
+    const DEFAULT_STATE = {
+      settings: {
+        apiUrl: "https://script.google.com/macros/s/AKfycbwDDO0NF5msB2B3KBDvMkPpGN1EDD2hz8cEvKZGxrgOm_QECebVkUlHxnmo6D9_FsTx0w/exec",
+        liffId: "",
+        adminPin: "1234",
+        siteName: "總店",
+        latitude: 25.033964,
+        longitude: 121.564468,
+        radiusMeters: 200
+      },
+      employees: [
+        { id: "emp-1", name: "測試員工", hourlyRate: 190, lineUserId: "" },
+        { id: "emp-2", name: "店長", hourlyRate: 220, lineUserId: "" }
+      ],
+      shifts: [
+        { id: "shift-morning", name: "早班", start: "06:30", end: "14:30", inGrace: 15, outGrace: 15, breakMinutes: 0 },
+        { id: "shift-evening", name: "晚班", start: "14:30", end: "22:30", inGrace: 15, outGrace: 15, breakMinutes: 0 }
+      ],
+      records: []
+    };
+
+    let state = loadState();
+    let currentProfile = { userId: "", displayName: "測試員工", pictureUrl: "" };
+    let syncing = false;
+
+    function deepMerge(base, saved) {
+      return {
+        settings: Object.assign({}, base.settings, saved.settings || {}),
+        employees: saved.employees || base.employees,
+        shifts: saved.shifts || base.shifts,
+        records: saved.records || base.records
+      };
+    }
+
+    function loadState() {
+      try {
+        return deepMerge(DEFAULT_STATE, JSON.parse(localStorage.getItem(STORE_KEY)) || {});
+      } catch {
+        return structuredClone(DEFAULT_STATE);
+      }
+    }
+
+    function saveState() {
+      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    }
+
+    function el(id) {
+      return document.getElementById(id);
+    }
+
+    function todayParts() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, "0");
+      const dd = String(now.getDate()).padStart(2, "0");
+      const hh = String(now.getHours()).padStart(2, "0");
+      const min = String(now.getMinutes()).padStart(2, "0");
+      const ss = String(now.getSeconds()).padStart(2, "0");
+      return { now, date: `${yyyy}-${mm}-${dd}`, month: `${yyyy}-${mm}`, time: `${hh}:${min}:${ss}` };
+    }
+
+    function updateClock() {
+      const parts = todayParts();
+      el("timeNow").textContent = parts.time;
+      el("dateNow").textContent = parts.now.toLocaleDateString("zh-TW", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+      });
+    }
+
+    function renderProfile(status) {
+      el("profileName").textContent = currentProfile.displayName || "測試員工";
+      el("profileStatus").textContent = status;
+      if (currentProfile.pictureUrl) {
+        el("avatar").innerHTML = `<img src="${currentProfile.pictureUrl}" alt="">`;
+      } else {
+        el("avatar").textContent = (currentProfile.displayName || "測").slice(0, 1);
+      }
+    }
+
+    async function initLineProfile() {
+      const liffId = state.settings.liffId;
+      if (!liffId || typeof liff === "undefined") {
+        renderProfile(state.settings.apiUrl ? "Google Sheet 模式" : "本機測試模式");
+        return;
+      }
+      try {
+        await liff.init({ liffId });
+        if (!liff.isLoggedIn()) {
+          liff.login();
+          return;
+        }
+        const profile = await liff.getProfile();
+        currentProfile = {
+          userId: profile.userId,
+          displayName: profile.displayName,
+          pictureUrl: profile.pictureUrl || ""
+        };
+        renderProfile("已連接 LINE");
+      } catch (error) {
+        console.warn(error);
+        renderProfile("LIFF 失敗，使用測試模式");
+      }
+    }
+
+    async function apiCall(action, payload = {}) {
+      if (!state.settings.apiUrl) return null;
+      const response = await fetch(state.settings.apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action, payload })
+      });
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error || "API request failed");
+      return data;
+    }
+
+    async function syncFromSheet() {
+      if (!state.settings.apiUrl || syncing) return;
+      syncing = true;
+      try {
+        const data = await apiCall("getBootstrap");
+        if (data && data.payload) {
+          state.employees = data.payload.employees.length ? data.payload.employees : state.employees;
+          state.shifts = data.payload.shifts.length ? data.payload.shifts : state.shifts;
+          state.records = data.payload.records || state.records;
+          saveState();
+          renderAll();
+        }
+      } catch (error) {
+        alert(`讀取 Google Sheet 失敗：${error.message}`);
+      } finally {
+        syncing = false;
+      }
+    }
+
+    function getSelectedEmployee() {
+      if (currentProfile.userId) {
+        const matched = state.employees.find(employee => employee.lineUserId === currentProfile.userId);
+        if (matched) return matched;
+        return {
+          id: `line-${currentProfile.userId}`,
+          name: currentProfile.displayName,
+          hourlyRate: 0,
+          lineUserId: currentProfile.userId
+        };
+      }
+      const selectedId = el("employeeSelect").value;
+      return state.employees.find(employee => employee.id === selectedId) || state.employees[0];
+    }
+
+    function selectedShift() {
+      return state.shifts.find(shift => shift.id === el("shiftSelect").value) || state.shifts[0];
+    }
+
+    function minutesOfDay(timeText) {
+      const parts = String(timeText).split(":").map(Number);
+      return (parts[0] || 0) * 60 + (parts[1] || 0);
+    }
+
+    function timeFromMinutes(minutes) {
+      const normalized = ((minutes % 1440) + 1440) % 1440;
+      const h = String(Math.floor(normalized / 60)).padStart(2, "0");
+      const m = String(normalized % 60).padStart(2, "0");
+      return `${h}:${m}`;
+    }
+
+    function judgeClock(type, actualTime, shift) {
+      const actual = minutesOfDay(actualTime);
+      const scheduled = minutesOfDay(type === "in" ? shift.start : shift.end);
+      const grace = Number(type === "in" ? shift.inGrace : shift.outGrace) || 0;
+      if (actual >= scheduled - grace && actual <= scheduled + grace) {
+        return { status: "準時", countedTime: timeFromMinutes(scheduled) };
+      }
+      if (type === "in") {
+        return actual > scheduled + grace
+          ? { status: "遲到", countedTime: timeFromMinutes(actual) }
+          : { status: "提早", countedTime: timeFromMinutes(scheduled) };
+      }
+      return actual < scheduled - grace
+        ? { status: "早退", countedTime: timeFromMinutes(actual) }
+        : { status: "延後", countedTime: timeFromMinutes(actual) };
+    }
+
+    function distanceMeters(aLat, aLng, bLat, bLng) {
+      const earth = 6371000;
+      const toRad = value => value * Math.PI / 180;
+      const dLat = toRad(bLat - aLat);
+      const dLng = toRad(bLng - aLng);
+      const s1 = Math.sin(dLat / 2) ** 2;
+      const s2 = Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+      return 2 * earth * Math.asin(Math.sqrt(s1 + s2));
+    }
+
+    function getPosition() {
+      return new Promise(resolve => {
+        if (!navigator.geolocation) {
+          resolve({ ok: false, message: "此裝置不支援定位" });
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          position => resolve({
+            ok: true,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy
+          }),
+          error => resolve({ ok: false, message: error.message || "定位失敗" }),
+          { enableHighAccuracy: true, timeout: 9000, maximumAge: 30000 }
+        );
+      });
+    }
+
+    async function clock(type) {
+      const button = type === "in" ? el("clockInBtn") : el("clockOutBtn");
+      button.disabled = true;
+      button.textContent = "定位中...";
+      try {
+        const employee = getSelectedEmployee();
+        const shift = selectedShift();
+        const parts = todayParts();
+        const judge = judgeClock(type, parts.time, shift);
+        const position = await getPosition();
+        let distance = null;
+        let locationStatus = "未定位";
+        let locationText = "";
+
+        if (position.ok) {
+          distance = Math.round(distanceMeters(position.latitude, position.longitude, state.settings.latitude, state.settings.longitude));
+          locationStatus = distance <= Number(state.settings.radiusMeters || 0) ? "範圍內" : "超出範圍";
+          locationText = `${position.latitude.toFixed(6)}, ${position.longitude.toFixed(6)}，誤差 ${Math.round(position.accuracy)}m`;
+        } else {
+          locationStatus = "定位失敗";
+          locationText = position.message;
+        }
+
+        if (locationStatus !== "範圍內" && !confirm(`${locationStatus}，仍要送出異常打卡嗎？`)) {
+          return;
+        }
+
+        const record = {
+          id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+          date: parts.date,
+          employeeId: employee.id,
+          employeeName: employee.name,
+          lineUserId: employee.lineUserId || currentProfile.userId || "",
+          type,
+          actualTime: parts.time,
+          countedTime: judge.countedTime,
+          shiftId: shift.id,
+          shiftName: shift.name,
+          clockStatus: judge.status,
+          locationStatus,
+          distance,
+          locationText,
+          note: el("noteInput").value.trim(),
+          iso: parts.now.toISOString()
+        };
+
+        if (state.settings.apiUrl) {
+          await apiCall("clock", record);
+          await syncFromSheet();
+        } else {
+          upsertLocalRecord(record);
+          saveState();
+          renderAll();
+        }
+
+        el("noteInput").value = "";
+        alert(`${type === "in" ? "上班" : "下班"}打卡完成：${judge.status}，${locationStatus}`);
+      } catch (error) {
+        alert(`打卡失敗：${error.message}`);
+      } finally {
+        button.disabled = false;
+        button.textContent = type === "in" ? "上班打卡" : "下班打卡";
+      }
+    }
+
+    function upsertLocalRecord(record) {
+      const sameDay = state.records.find(item =>
+        item.date === record.date &&
+        item.employeeId === record.employeeId &&
+        item.shiftId === record.shiftId
+      );
+      if (!sameDay) {
+        state.records.push({
+          id: record.id,
+          date: record.date,
+          employeeId: record.employeeId,
+          employeeName: record.employeeName,
+          lineUserId: record.lineUserId,
+          shiftId: record.shiftId,
+          shiftName: record.shiftName,
+          inActual: record.type === "in" ? record.actualTime : "",
+          inCounted: record.type === "in" ? record.countedTime : "",
+          inStatus: record.type === "in" ? record.clockStatus : "",
+          outActual: record.type === "out" ? record.actualTime : "",
+          outCounted: record.type === "out" ? record.countedTime : "",
+          outStatus: record.type === "out" ? record.clockStatus : "",
+          locationStatus: record.locationStatus,
+          distance: record.distance,
+          note: record.note,
+          hours: 0,
+          pay: 0,
+          iso: record.iso
+        });
+      } else {
+        if (record.type === "in") {
+          sameDay.inActual = record.actualTime;
+          sameDay.inCounted = record.countedTime;
+          sameDay.inStatus = record.clockStatus;
+        } else {
+          sameDay.outActual = record.actualTime;
+          sameDay.outCounted = record.countedTime;
+          sameDay.outStatus = record.clockStatus;
+        }
+        sameDay.locationStatus = record.locationStatus;
+        sameDay.distance = record.distance;
+        sameDay.note = record.note || sameDay.note;
+        sameDay.iso = record.iso;
+      }
+      recalcLocalRecords();
+    }
+
+    function recalcLocalRecords() {
+      state.records.forEach(record => {
+        const shift = state.shifts.find(item => item.id === record.shiftId);
+        const employee = state.employees.find(item => item.id === record.employeeId);
+        if (!record.inCounted || !record.outCounted || !shift) {
+          record.hours = 0;
+          record.pay = 0;
+          return;
+        }
+        let start = minutesOfDay(record.inCounted);
+        let end = minutesOfDay(record.outCounted);
+        if (end < start) end += 1440;
+        const minutes = Math.max(0, end - start - (Number(shift.breakMinutes) || 0));
+        record.hours = Math.round((minutes / 60) * 100) / 100;
+        record.pay = Math.round(record.hours * (Number(employee?.hourlyRate) || 0));
+      });
+    }
+
+    function filteredRecords() {
+      const month = el("filterMonth").value || todayParts().month;
+      const employeeId = el("filterEmployee").value;
+      return state.records
+        .filter(record => record.date && record.date.startsWith(month))
+        .filter(record => !employeeId || record.employeeId === employeeId)
+        .sort((a, b) => String(b.date + (b.outActual || b.inActual || "")).localeCompare(String(a.date + (a.outActual || a.inActual || ""))));
+    }
+
+    function renderEmployees() {
+      const employeeOptions = state.employees.map(employee => `<option value="${employee.id}">${escapeHtml(employee.name)}</option>`).join("");
+      el("employeeSelect").innerHTML = employeeOptions;
+      el("filterEmployee").innerHTML = `<option value="">全部員工</option>${employeeOptions}`;
+      el("employeeList").innerHTML = state.employees.length ? state.employees.map(employee => `
+        <div class="employee-row">
+          <div>
+            <strong>${escapeHtml(employee.name)}</strong>
+            <small>時薪 ${Number(employee.hourlyRate || 0).toLocaleString()}${employee.lineUserId ? " / 已綁定 LINE" : " / 尚未綁定 LINE"}</small>
+          </div>
+          <button class="btn red" type="button" data-delete-employee="${employee.id}">刪除</button>
+        </div>
+      `).join("") : `<div class="empty">尚未建立員工</div>`;
+    }
+
+    function renderShifts() {
+      const options = state.shifts.map(shift => `<option value="${shift.id}">${escapeHtml(shift.name)} ${shift.start}-${shift.end}</option>`).join("");
+      el("shiftSelect").innerHTML = options;
+      el("shiftList").innerHTML = state.shifts.length ? state.shifts.map(shift => `
+        <div class="shift-row">
+          <div>
+            <strong>${escapeHtml(shift.name)}</strong>
+            <small>${shift.start}-${shift.end} / 上班容許 ${shift.inGrace} 分 / 下班容許 ${shift.outGrace} 分 / 休息 ${shift.breakMinutes || 0} 分</small>
+          </div>
+          <button class="btn red" type="button" data-delete-shift="${shift.id}">刪除</button>
+        </div>
+      `).join("") : `<div class="empty">尚未建立班別</div>`;
+    }
+
+    function renderRecords() {
+      const records = filteredRecords();
+      el("recordsTable").innerHTML = records.length ? records.map(record => {
+        const status = [record.inStatus, record.outStatus, record.locationStatus].filter(Boolean).join(" / ");
+        return `
+          <tr>
+            <td>${record.date}</td>
+            <td>${escapeHtml(record.employeeName)}</td>
+            <td>${escapeHtml(record.inActual || "-")}${record.inCounted ? `<br><small>計 ${record.inCounted}</small>` : ""}</td>
+            <td>${escapeHtml(record.outActual || "-")}${record.outCounted ? `<br><small>計 ${record.outCounted}</small>` : ""}</td>
+            <td>${escapeHtml(record.shiftName || "")}</td>
+            <td>${escapeHtml(status || "-")}</td>
+            <td>${Number(record.hours || 0).toFixed(2)}</td>
+            <td>${record.distance === null || record.distance === undefined ? "-" : `${record.distance}m`}</td>
+            <td>${escapeHtml(record.note || "")}</td>
+          </tr>
+        `;
+      }).join("") : `<tr><td colspan="9" class="empty">查無紀錄</td></tr>`;
+    }
+
+    function renderStats() {
+      const today = todayParts().date;
+      const month = el("filterMonth").value || todayParts().month;
+      const todays = state.records.filter(record => record.date === today);
+      const monthRecords = state.records.filter(record => record.date && record.date.startsWith(month));
+      const issueCount = todays.filter(record => [record.inStatus, record.outStatus, record.locationStatus].some(status => status && !["準時", "範圍內"].includes(status))).length;
+      const totalHours = monthRecords.reduce((sum, record) => sum + Number(record.hours || 0), 0);
+      const totalPay = monthRecords.reduce((sum, record) => sum + Number(record.pay || 0), 0);
+      el("todayIn").textContent = todays.filter(record => record.inActual).length;
+      el("todayOut").textContent = todays.filter(record => record.outActual).length;
+      el("todayIssue").textContent = issueCount;
+      el("monthDays").textContent = new Set(monthRecords.map(record => `${record.employeeId}-${record.date}`)).size;
+      el("monthHours").textContent = totalHours.toFixed(1);
+      el("monthPay").textContent = Math.round(totalPay).toLocaleString();
+
+      const recent = [...state.records].sort((a, b) => String(b.iso || b.date).localeCompare(String(a.iso || a.date))).slice(0, 6);
+      el("recentRecords").innerHTML = recent.length ? recent.map(record => {
+        const bad = [record.inStatus, record.outStatus, record.locationStatus].some(status => status && !["準時", "範圍內"].includes(status));
+        return `
+          <div class="record">
+            <div>
+              <strong>${escapeHtml(record.employeeName)} ${escapeHtml(record.shiftName || "")}</strong>
+              <small>${record.date} / 上班 ${record.inActual || "-"} / 下班 ${record.outActual || "-"} / ${Number(record.hours || 0).toFixed(2)} 小時</small>
+            </div>
+            <span class="badge ${bad ? "warn" : "ok"}">${bad ? "異常" : "正常"}</span>
+          </div>
+        `;
+      }).join("") : `<div class="empty">尚無打卡紀錄</div>`;
+    }
+
+    function renderSettings() {
+      el("apiUrlInput").value = state.settings.apiUrl || "";
+      el("liffIdInput").value = state.settings.liffId || "";
+      el("adminPinInput").value = state.settings.adminPin || "1234";
+      el("siteNameInput").value = state.settings.siteName || "";
+      el("radiusInput").value = state.settings.radiusMeters || 200;
+      el("latInput").value = state.settings.latitude || "";
+      el("lngInput").value = state.settings.longitude || "";
+    }
+
+    function renderAll() {
+      recalcLocalRecords();
+      renderEmployees();
+      renderShifts();
+      renderRecords();
+      renderStats();
+      renderSettings();
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, char => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#039;"
+      }[char]));
+    }
+
+    function switchTab(tabName) {
+      document.querySelectorAll(".tab").forEach(tab => tab.classList.toggle("active", tab.dataset.tab === tabName));
+      document.querySelectorAll(".tab-pane").forEach(pane => pane.classList.add("hidden"));
+      el(`tab-${tabName}`).classList.remove("hidden");
+    }
+
+    function requestAdminPin() {
+      const entered = prompt("請輸入管理 PIN");
+      return entered === (state.settings.adminPin || "1234");
+    }
+
+    async function addEmployee() {
+      if (!requestAdminPin()) return alert("PIN 錯誤");
+      const employee = {
+        id: `emp-${Date.now()}`,
+        name: el("newEmployeeName").value.trim(),
+        hourlyRate: Number(el("newEmployeeRate").value) || 0,
+        lineUserId: el("newEmployeeLineId").value.trim()
+      };
+      if (!employee.name) return alert("請輸入員工姓名");
+      state.employees.push(employee);
+      saveState();
+      if (state.settings.apiUrl) await apiCall("saveEmployee", employee);
+      el("newEmployeeName").value = "";
+      el("newEmployeeRate").value = "";
+      el("newEmployeeLineId").value = "";
+      renderAll();
+    }
+
+    async function deleteEmployee(id) {
+      if (!requestAdminPin()) return alert("PIN 錯誤");
+      if (!confirm("確定刪除此員工？既有紀錄會保留。")) return;
+      state.employees = state.employees.filter(employee => employee.id !== id);
+      saveState();
+      if (state.settings.apiUrl) await apiCall("deleteEmployee", { id });
+      renderAll();
+    }
+
+    async function addShift() {
+      if (!requestAdminPin()) return alert("PIN 錯誤");
+      const shift = {
+        id: `shift-${Date.now()}`,
+        name: el("newShiftName").value.trim(),
+        start: el("newShiftStart").value,
+        end: el("newShiftEnd").value,
+        inGrace: Number(el("newShiftInGrace").value) || 0,
+        outGrace: Number(el("newShiftOutGrace").value) || 0,
+        breakMinutes: Number(el("newShiftBreak").value) || 0
+      };
+      if (!shift.name || !shift.start || !shift.end) return alert("請輸入完整班別資料");
+      state.shifts.push(shift);
+      saveState();
+      if (state.settings.apiUrl) await apiCall("saveShift", shift);
+      el("newShiftName").value = "";
+      renderAll();
+    }
+
+    async function deleteShift(id) {
+      if (!requestAdminPin()) return alert("PIN 錯誤");
+      if (!confirm("確定刪除此班別？")) return;
+      state.shifts = state.shifts.filter(shift => shift.id !== id);
+      saveState();
+      if (state.settings.apiUrl) await apiCall("deleteShift", { id });
+      renderAll();
+    }
+
+    async function saveSettingsFromForm() {
+      if (!requestAdminPin()) return alert("PIN 錯誤");
+      state.settings = {
+        apiUrl: el("apiUrlInput").value.trim(),
+        liffId: el("liffIdInput").value.trim(),
+        adminPin: el("adminPinInput").value.trim() || "1234",
+        siteName: el("siteNameInput").value.trim() || "總店",
+        radiusMeters: Number(el("radiusInput").value) || 200,
+        latitude: Number(el("latInput").value) || DEFAULT_STATE.settings.latitude,
+        longitude: Number(el("lngInput").value) || DEFAULT_STATE.settings.longitude
+      };
+      saveState();
+      if (state.settings.apiUrl) {
+        await apiCall("saveSettings", state.settings);
+        await syncFromSheet();
+      }
+      renderAll();
+      alert("設定已儲存。若剛填入 LIFF ID，請重新整理頁面。");
+    }
+
+    async function setCurrentLocationAsSite() {
+      if (!requestAdminPin()) return alert("PIN 錯誤");
+      const position = await getPosition();
+      if (!position.ok) return alert(`無法取得目前位置：${position.message}`);
+      el("latInput").value = position.latitude.toFixed(6);
+      el("lngInput").value = position.longitude.toFixed(6);
+    }
+
+    function exportCsv() {
+      const rows = filteredRecords();
+      const header = ["日期", "員工", "班別", "上班實際", "上班計算", "上班狀態", "下班實際", "下班計算", "下班狀態", "工時", "預估薪資", "定位狀態", "距離公尺", "備註"];
+      const csvRows = [header, ...rows.map(record => [
+        record.date,
+        record.employeeName,
+        record.shiftName,
+        record.inActual,
+        record.inCounted,
+        record.inStatus,
+        record.outActual,
+        record.outCounted,
+        record.outStatus,
+        record.hours,
+        record.pay,
+        record.locationStatus,
+        record.distance ?? "",
+        record.note
+      ])];
+      const csv = "\ufeff" + csvRows.map(row => row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `line-clock-records-${el("filterMonth").value || todayParts().month}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function clearLocalData() {
+      if (!requestAdminPin()) return alert("PIN 錯誤");
+      if (!confirm("只會清除本機測試資料，不會刪除 Google Sheet。確定？")) return;
+      state.records = [];
+      saveState();
+      renderAll();
+    }
+
+    function bindEvents() {
+      document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
+      el("clockInBtn").addEventListener("click", () => clock("in"));
+      el("clockOutBtn").addEventListener("click", () => clock("out"));
+      el("addEmployeeBtn").addEventListener("click", addEmployee);
+      el("addShiftBtn").addEventListener("click", addShift);
+      el("saveSettingsBtn").addEventListener("click", saveSettingsFromForm);
+      el("useCurrentLocationBtn").addEventListener("click", setCurrentLocationAsSite);
+      el("exportCsvBtn").addEventListener("click", exportCsv);
+      el("clearLocalBtn").addEventListener("click", clearLocalData);
+      el("refreshBtn").addEventListener("click", syncFromSheet);
+      el("filterMonth").addEventListener("change", () => { renderRecords(); renderStats(); });
+      el("filterEmployee").addEventListener("change", renderRecords);
+      el("employeeList").addEventListener("click", event => {
+        const button = event.target.closest("[data-delete-employee]");
+        if (button) deleteEmployee(button.dataset.deleteEmployee);
+      });
+      el("shiftList").addEventListener("click", event => {
+        const button = event.target.closest("[data-delete-shift]");
+        if (button) deleteShift(button.dataset.deleteShift);
+      });
+    }
+
+    async function init() {
+      el("filterMonth").value = todayParts().month;
+      bindEvents();
+      updateClock();
+      setInterval(updateClock, 1000);
+      renderAll();
+      await initLineProfile();
+      await syncFromSheet();
+    }
+
+    init();
+  </script>
+</body>
+</html>
