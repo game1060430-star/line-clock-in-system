@@ -144,6 +144,22 @@
       gap: 6px;
       margin-top: 12px;
     }
+    .attendance-note {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .attendance-weekdays {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-align: center;
+    }
     .attendance-day {
       min-height: 48px;
       border-radius: 8px;
@@ -161,6 +177,12 @@
     .attendance-day.warn { background: #fff0df; border-color: #e6bd81; color: var(--amber); }
     .attendance-day.bad { background: #fdeaea; border-color: #e6aaaa; color: var(--red); }
     .attendance-day.empty { opacity: 0.62; }
+    .attendance-day.blank {
+      min-height: 48px;
+      border-color: transparent;
+      background: transparent;
+      box-shadow: none;
+    }
     .attendance-legend {
       display: flex;
       gap: 8px;
@@ -417,6 +439,10 @@
                 <label for="filterEmployee">員工</label>
                 <select id="filterEmployee"></select>
               </div>
+            </div>
+            <p class="attendance-note">這裡是所選員工的本月出勤月曆，每一格代表一天。</p>
+            <div class="attendance-weekdays" aria-hidden="true">
+              <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
             </div>
             <div id="attendanceCalendar" class="attendance-calendar"></div>
             <div class="attendance-legend">
@@ -1007,12 +1033,16 @@
       }
       const [year, monthNumber] = month.split("-").map(Number);
       const daysInMonth = new Date(year, monthNumber, 0).getDate();
+      const firstWeekday = new Date(year, monthNumber - 1, 1).getDay();
       const recordsByDate = new Map(
         state.records
           .filter(record => record.date && record.date.startsWith(month) && record.employeeId === employeeId)
           .map(record => [record.date, record])
       );
       const cells = [];
+      for (let index = 0; index < firstWeekday; index++) {
+        cells.push(`<div class="attendance-day blank" aria-hidden="true"></div>`);
+      }
       for (let day = 1; day <= daysInMonth; day++) {
         const date = `${month}-${String(day).padStart(2, "0")}`;
         const record = recordsByDate.get(date);
