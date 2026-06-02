@@ -787,7 +787,7 @@
     const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
 
     function normalizeEmployee(employee) {
-      return Object.assign({
+      const normalized = Object.assign({
         id: `emp-${Date.now()}`,
         name: "",
         hourlyRate: 0,
@@ -799,6 +799,37 @@
         lineUserId: "",
         active: true
       }, employee);
+      normalized.workStart = toTime(normalized.workStart, "06:30");
+      normalized.workEnd = toTime(normalized.workEnd, "13:30");
+      return normalized;
+    }
+
+    function normalizeSchedule(schedule) {
+      const normalized = Object.assign({}, schedule);
+      normalized.start = toTime(normalized.start, "");
+      normalized.end = toTime(normalized.end, "");
+      return normalized;
+    }
+
+    function normalizeRecord(record) {
+      const normalized = Object.assign({}, record);
+      ["inActual", "inCounted", "outActual", "outCounted"].forEach(key => {
+        normalized[key] = toTime(normalized[key], "");
+      });
+      return normalized;
+    }
+
+    function toTime(value, fallback = "") {
+      if (value === undefined || value === null || value === "") return fallback;
+      if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return `${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}`;
+      }
+      const text = String(value);
+      const plain = text.match(/^(\d{1,2}):(\d{2})/);
+      if (plain) return `${pad(Number(plain[1]))}:${plain[2]}`;
+      const iso = text.match(/T(\d{2}):(\d{2})/);
+      if (iso) return `${iso[1]}:${iso[2]}`;
+      return text || fallback;
     }
 
     function loadState() {
@@ -807,10 +838,10 @@
         return {
           settings: Object.assign({}, DEFAULT_STATE.settings, saved.settings || {}),
           employees: (saved.employees || DEFAULT_STATE.employees).map(normalizeEmployee),
-          weeklySchedules: saved.weeklySchedules || [],
-          schedules: saved.schedules || [],
+          weeklySchedules: (saved.weeklySchedules || []).map(normalizeSchedule),
+          schedules: (saved.schedules || []).map(normalizeSchedule),
           requests: saved.requests || [],
-          records: saved.records || []
+          records: (saved.records || []).map(normalizeRecord)
         };
       } catch {
         return structuredClone(DEFAULT_STATE);
@@ -858,10 +889,10 @@
         if (data?.payload) {
           state.settings = Object.assign({}, state.settings, data.payload.settings || {});
           state.employees = (data.payload.employees?.length ? data.payload.employees : state.employees).map(normalizeEmployee);
-          state.weeklySchedules = data.payload.weeklySchedules || [];
-          state.schedules = data.payload.schedules || [];
+          state.weeklySchedules = (data.payload.weeklySchedules || []).map(normalizeSchedule);
+          state.schedules = (data.payload.schedules || []).map(normalizeSchedule);
           state.requests = data.payload.requests || [];
-          state.records = data.payload.records || [];
+          state.records = (data.payload.records || []).map(normalizeRecord);
           saveState();
           renderAll();
         }
