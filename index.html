@@ -138,6 +138,27 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
     }
+    .line-menu {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .menu-card {
+      min-height: 78px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      display: grid;
+      place-items: center;
+      gap: 4px;
+      font-weight: 900;
+      padding: 10px 8px;
+      text-align: center;
+      box-shadow: var(--shadow);
+    }
+    .menu-card small { color: var(--muted); font-weight: 700; }
     .attendance-calendar {
       display: grid;
       grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -381,7 +402,7 @@
       .hero { padding: 14px; }
       .hero h2 { font-size: 23px; }
       .panel { padding: 10px; }
-      .clock-card, .form-grid, .stat-grid, .admin-shortcuts { grid-template-columns: 1fr; }
+      .clock-card, .form-grid, .stat-grid, .admin-shortcuts, .line-menu { grid-template-columns: 1fr; }
       .brand h1 { font-size: 19px; }
       .brand-mark { width: 38px; height: 38px; }
       .profile { width: 100%; min-width: 0; }
@@ -471,6 +492,11 @@
     <main class="layout">
       <section>
         <div id="tab-clock" class="tab-pane">
+          <div class="line-menu">
+            <button class="menu-card" type="button" data-menu-action="clock-in">上班打卡<small>開始上班</small></button>
+            <button class="menu-card" type="button" data-menu-action="clock-out">下班打卡<small>結束上班</small></button>
+            <button class="menu-card" type="button" data-menu-action="request">補卡 / 請假<small>送審核</small></button>
+          </div>
           <div class="panel clock-card">
             <div class="clock-face">
               <div>
@@ -486,11 +512,11 @@
             <h3>本次打卡資訊</h3>
             <div id="employeeIdentity" class="notice" style="margin-bottom: 12px;"></div>
             <div class="form-grid">
-              <div>
+              <div id="employeeSelectWrap">
                 <label for="employeeSelect">選擇員工</label>
                 <select id="employeeSelect"></select>
               </div>
-              <div>
+              <div id="bindLineWrap">
                 <label>LINE 綁定</label>
                 <button id="bindLineBtn" class="btn blue" type="button">綁定我目前的 LINE</button>
               </div>
@@ -533,11 +559,11 @@
                 <label for="requestPunchTime">補卡時間</label>
                 <input id="requestPunchTime" type="time" value="06:30">
               </div>
-              <div>
+              <div class="change-only hidden">
                 <label for="requestStart">改班上班時間</label>
                 <input id="requestStart" type="time" value="06:30">
               </div>
-              <div>
+              <div class="change-only hidden">
                 <label for="requestEnd">改班下班時間</label>
                 <input id="requestEnd" type="time" value="13:30">
               </div>
@@ -1369,8 +1395,11 @@
       const matched = currentProfile.userId
         ? state.employees.find(item => item.lineUserId === currentProfile.userId)
         : null;
+      if (matched && el("requestEmployee")) el("requestEmployee").value = matched.id;
       if (el("employeeSelect")) el("employeeSelect").disabled = Boolean(matched);
       if (el("requestEmployee")) el("requestEmployee").disabled = Boolean(matched);
+      if (el("employeeSelectWrap")) el("employeeSelectWrap").classList.toggle("hidden", Boolean(matched));
+      if (el("bindLineWrap")) el("bindLineWrap").classList.toggle("hidden", Boolean(matched));
       const lineText = currentProfile.userId
         ? (matched ? "已用 LINE 自動綁定" : "這個 LINE 尚未綁定員工")
         : "目前不是 LIFF 模式，請先手動選員工測試";
@@ -1582,7 +1611,7 @@
 
     function renderStats() {
       const today = todayParts().date;
-      const month = el("filterMonth").value || todayParts().month;
+      const month = adminUnlocked ? (el("filterMonth").value || todayParts().month) : todayParts().month;
       const visibleRecords = visibleRecordsForCurrentUser();
       const todays = visibleRecords.filter(record => record.date === today);
       const monthRecords = visibleRecords.filter(record => record.date && record.date.startsWith(month));
@@ -2100,6 +2129,14 @@
       el("clockOutBtn").addEventListener("click", () => clock("out"));
       el("bindLineBtn").addEventListener("click", bindCurrentLineUser);
       el("submitRequestBtn").addEventListener("click", submitScheduleRequest);
+      document.querySelectorAll("[data-menu-action]").forEach(button => {
+        button.addEventListener("click", () => {
+          const action = button.dataset.menuAction;
+          if (action === "clock-in") return clock("in");
+          if (action === "clock-out") return clock("out");
+          switchTab("request");
+        });
+      });
       el("unlockAdminBtn").addEventListener("click", unlockAdmin);
       document.querySelectorAll("[data-admin-target]").forEach(button => {
         button.addEventListener("click", () => switchTab(button.dataset.adminTarget));
