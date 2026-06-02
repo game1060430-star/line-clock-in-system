@@ -450,6 +450,34 @@
               <span><i class="legend-dot warn"></i>上班中</span>
               <span><i class="legend-dot bad"></i>異常</span>
             </div>
+            <hr>
+            <h3>管理補打卡</h3>
+            <div class="form-grid">
+              <div>
+                <label for="manualEmployee">員工</label>
+                <select id="manualEmployee"></select>
+              </div>
+              <div>
+                <label for="manualDate">日期</label>
+                <input id="manualDate" type="date">
+              </div>
+              <div>
+                <label for="manualType">補打卡類型</label>
+                <select id="manualType">
+                  <option value="in">上班</option>
+                  <option value="out">下班</option>
+                </select>
+              </div>
+              <div>
+                <label for="manualTime">時間</label>
+                <input id="manualTime" type="time">
+              </div>
+              <div class="span-2">
+                <label for="manualNote">補打卡原因</label>
+                <textarea id="manualNote" placeholder="例如：忘記打下班卡、手機沒電、管理者補登"></textarea>
+              </div>
+            </div>
+            <button id="manualClockBtn" class="btn primary" type="button" style="margin-top: 10px;">送出補打卡</button>
             <div class="actions" style="margin-top: 10px;">
               <button id="refreshBtn" class="btn ghost" type="button">重新整理</button>
               <button id="exportCsvBtn" class="btn blue" type="button">匯出 CSV</button>
@@ -980,6 +1008,7 @@
       const employeeOptions = state.employees.map(employee => `<option value="${employee.id}">${escapeHtml(employee.name)}</option>`).join("");
       el("employeeSelect").innerHTML = employeeOptions;
       el("filterEmployee").innerHTML = `<option value="">全部員工</option>${employeeOptions}`;
+      if (el("manualEmployee")) el("manualEmployee").innerHTML = employeeOptions;
       el("employeeList").innerHTML = state.employees.length ? state.employees.map(employee => `
         <div class="employee-row">
           <div>
@@ -1104,9 +1133,22 @@
       el("lngInput").value = state.settings.longitude || "";
     }
 
+    function updateManualClockDefaults(forceTime = false) {
+      if (!el("manualDate")) return;
+      if (!el("manualDate").value) el("manualDate").value = todayParts().date;
+      const employeeId = el("manualEmployee").value || el("filterEmployee").value || state.employees[0]?.id;
+      const employee = state.employees.find(item => item.id === employeeId);
+      if (employee && !el("manualEmployee").value) el("manualEmployee").value = employee.id;
+      if (!employee) return;
+      const type = el("manualType").value || "in";
+      const suggestedTime = type === "in" ? (employee.workStart || "06:30") : (employee.workEnd || "14:30");
+      if (forceTime || !el("manualTime").value) el("manualTime").value = suggestedTime;
+    }
+
     function renderAll() {
       recalcLocalRecords();
       renderEmployees();
+      updateManualClockDefaults();
       renderRecords();
       renderAttendanceCalendar();
       renderStats();
@@ -1138,7 +1180,7 @@
     }
 
     function unlockAdmin() {
-      if (!requestAdminPin()) return alert("PIN 錯誤");
+      if (!adminUnlocked && !requestAdminPin()) return alert("PIN 錯誤");
       adminUnlocked = true;
       el("adminLocked").classList.add("hidden");
       el("adminUnlocked").classList.remove("hidden");
@@ -1174,6 +1216,61 @@
       el("newEmployeeBreak").value = "0";
       el("newEmployeeLineId").value = "";
       renderAll();
+    }
+
+    async function manualClock() {
+      if (!adminUnlocked && !requestAdminPin()) return alert("PIN 錯誤");
+      const employeeId = el("manualEmployee").value || el("filterEmployee").value;
+      const employee = state.employees.find(item => item.id === employeeId);
+      if (!employee) return alert("請先選員工");
+      const date = el("manualDate").value;
+      const type = el("manualType").value;
+      const actualTime = el("manualTime").value;
+      if (!date) return alert("請選補打卡日期");
+      if (!actualTime) return alert("請填補打卡時間");
+
+      const shift = employeeSchedule(employee);
+      const judge = judgeClock(type, actualTime, shift);
+      const record = {
+        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+        date,
+        employeeId: employee.id,
+        employeeName: employee.name,
+        lineUserId: employee.lineUserId || "",
+        type,
+        actualTime,
+        countedTime: judge.countedTime,
+        shiftId: shift.id,
+        shiftName: shift.name,
+        clockStatus: judge.status,
+        locationStatus: "範圍內",
+        distance: "",
+        locationText: "管理者補打卡",
+        note: `補打卡：${el("manualNote").value.trim() || "管理者補登"}`,
+        iso: new Date(`${date}T${actualTime}:00`).toISOString()
+      };
+
+      const button = el("manualClockBtn");
+      button.disabled = true;
+      button.textContent = "送出中...";
+      try {
+        if (state.settings.apiUrl) {
+          await apiCall("clock", record);
+          await syncFromSheet();
+        } else {
+          upsertLocalRecord(record);
+          saveState();
+          renderAll();
+        }
+        el("filterEmployee").value = employee.id;
+        el("manualNote").value = "";
+        alert(`補${type === "in" ? "上班" : "下班"}打卡完成：${judge.status}`);
+      } catch (error) {
+        alert(`補打卡失敗：${error.message}`);
+      } finally {
+        button.disabled = false;
+        button.textContent = "送出補打卡";
+      }
     }
 
     async function deleteEmployee(id) {
@@ -1263,8 +1360,16 @@
       el("exportCsvBtn").addEventListener("click", exportCsv);
       el("clearLocalBtn").addEventListener("click", clearLocalData);
       el("refreshBtn").addEventListener("click", syncFromSheet);
+      el("manualClockBtn").addEventListener("click", manualClock);
+      el("manualEmployee").addEventListener("change", () => updateManualClockDefaults(true));
+      el("manualType").addEventListener("change", () => updateManualClockDefaults(true));
       el("filterMonth").addEventListener("change", () => { renderRecords(); renderAttendanceCalendar(); renderStats(); });
-      el("filterEmployee").addEventListener("change", () => { renderRecords(); renderAttendanceCalendar(); });
+      el("filterEmployee").addEventListener("change", () => {
+        if (el("filterEmployee").value) el("manualEmployee").value = el("filterEmployee").value;
+        updateManualClockDefaults(true);
+        renderRecords();
+        renderAttendanceCalendar();
+      });
       el("employeeSelect").addEventListener("change", renderStats);
       el("employeeList").addEventListener("click", event => {
         const button = event.target.closest("[data-delete-employee]");
