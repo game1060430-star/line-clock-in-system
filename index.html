@@ -82,14 +82,13 @@
       color: #fff;
       padding: 18px;
       margin-bottom: 12px;
-      display: grid;
-      grid-template-columns: 1.2fr 0.8fr;
-      gap: 16px;
+      display: block;
       overflow: hidden;
     }
     .hero h2 { margin: 0 0 8px; font-size: 28px; }
     .hero p { margin: 0; color: rgba(255,255,255,0.88); line-height: 1.65; font-size: 14px; }
     .hero-visual {
+      display: none;
       min-height: 118px;
       border: 1px solid rgba(255,255,255,0.26);
       border-radius: 8px;
@@ -116,7 +115,7 @@
     }
     .tabs {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px;
       margin-bottom: 12px;
       position: sticky;
@@ -134,6 +133,11 @@
       font-weight: 900;
     }
     .tab.active { border-color: var(--primary); background: var(--primary); color: #fff; }
+    .admin-shortcuts {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
     .layout {
       display: grid;
       grid-template-columns: minmax(0, 1fr) 340px;
@@ -307,9 +311,7 @@
 
     <nav class="tabs" aria-label="主要功能">
       <button class="tab active" data-tab="clock">打卡</button>
-      <button class="tab" data-tab="records">紀錄</button>
-      <button class="tab" data-tab="people">員工</button>
-      <button class="tab" data-tab="settings">設定</button>
+      <button class="tab" data-tab="admin">管理</button>
     </nav>
 
     <main class="layout">
@@ -340,6 +342,26 @@
               <div style="grid-column: 1 / -1;">
                 <label for="noteInput">備註</label>
                 <textarea id="noteInput" placeholder="例如：補打卡原因、外出支援、交接事項"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-admin" class="tab-pane hidden">
+          <div id="adminLocked" class="panel">
+            <h3>管理區</h3>
+            <div class="notice" style="margin-bottom: 12px;">
+              員工只能使用打卡功能。查看全部紀錄、員工名單、班別與系統設定前，請先輸入管理 PIN。
+            </div>
+            <button id="unlockAdminBtn" class="btn primary" type="button">輸入管理 PIN</button>
+          </div>
+          <div id="adminUnlocked" class="hidden">
+            <div class="panel">
+              <h3>管理功能</h3>
+              <div class="admin-shortcuts">
+                <button class="btn blue" type="button" data-admin-target="records">全部紀錄</button>
+                <button class="btn blue" type="button" data-admin-target="people">員工</button>
+                <button class="btn blue" type="button" data-admin-target="settings">設定</button>
               </div>
             </div>
           </div>
@@ -536,6 +558,7 @@
     let state = loadState();
     let currentProfile = { userId: "", displayName: "測試員工", pictureUrl: "" };
     let syncing = false;
+    let adminUnlocked = false;
 
     function deepMerge(base, saved) {
       return {
@@ -865,6 +888,15 @@
         .sort((a, b) => String(b.date + (b.outActual || b.inActual || "")).localeCompare(String(a.date + (a.outActual || a.inActual || ""))));
     }
 
+    function visibleRecordsForCurrentUser() {
+      if (adminUnlocked) return state.records;
+      const employee = getSelectedEmployee();
+      return state.records.filter(record =>
+        record.employeeId === employee?.id ||
+        (currentProfile.userId && record.lineUserId === currentProfile.userId)
+      );
+    }
+
     function renderEmployees() {
       const employeeOptions = state.employees.map(employee => `<option value="${employee.id}">${escapeHtml(employee.name)}</option>`).join("");
       el("employeeSelect").innerHTML = employeeOptions;
@@ -917,8 +949,9 @@
     function renderStats() {
       const today = todayParts().date;
       const month = el("filterMonth").value || todayParts().month;
-      const todays = state.records.filter(record => record.date === today);
-      const monthRecords = state.records.filter(record => record.date && record.date.startsWith(month));
+      const visibleRecords = visibleRecordsForCurrentUser();
+      const todays = visibleRecords.filter(record => record.date === today);
+      const monthRecords = visibleRecords.filter(record => record.date && record.date.startsWith(month));
       const issueCount = todays.filter(record => [record.inStatus, record.outStatus, record.locationStatus].some(status => status && !["準時", "範圍內"].includes(status))).length;
       const totalHours = monthRecords.reduce((sum, record) => sum + Number(record.hours || 0), 0);
       const totalPay = monthRecords.reduce((sum, record) => sum + Number(record.pay || 0), 0);
@@ -929,7 +962,7 @@
       el("monthHours").textContent = totalHours.toFixed(1);
       el("monthPay").textContent = Math.round(totalPay).toLocaleString();
 
-      const recent = [...state.records].sort((a, b) => String(b.iso || b.date).localeCompare(String(a.iso || a.date))).slice(0, 6);
+      const recent = [...visibleRecords].sort((a, b) => String(b.iso || b.date).localeCompare(String(a.iso || a.date))).slice(0, 6);
       el("recentRecords").innerHTML = recent.length ? recent.map(record => {
         const bad = [record.inStatus, record.outStatus, record.locationStatus].some(status => status && !["準時", "範圍內"].includes(status));
         return `
@@ -974,6 +1007,9 @@
     }
 
     function switchTab(tabName) {
+      if (["records", "people", "settings"].includes(tabName) && !adminUnlocked) {
+        tabName = "admin";
+      }
       document.querySelectorAll(".tab").forEach(tab => tab.classList.toggle("active", tab.dataset.tab === tabName));
       document.querySelectorAll(".tab-pane").forEach(pane => pane.classList.add("hidden"));
       el(`tab-${tabName}`).classList.remove("hidden");
@@ -982,6 +1018,14 @@
     function requestAdminPin() {
       const entered = prompt("請輸入管理 PIN");
       return entered === (state.settings.adminPin || "1234");
+    }
+
+    function unlockAdmin() {
+      if (!requestAdminPin()) return alert("PIN 錯誤");
+      adminUnlocked = true;
+      el("adminLocked").classList.add("hidden");
+      el("adminUnlocked").classList.remove("hidden");
+      renderAll();
     }
 
     async function addEmployee() {
@@ -1107,6 +1151,10 @@
       document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
       el("clockInBtn").addEventListener("click", () => clock("in"));
       el("clockOutBtn").addEventListener("click", () => clock("out"));
+      el("unlockAdminBtn").addEventListener("click", unlockAdmin);
+      document.querySelectorAll("[data-admin-target]").forEach(button => {
+        button.addEventListener("click", () => switchTab(button.dataset.adminTarget));
+      });
       el("addEmployeeBtn").addEventListener("click", addEmployee);
       el("addShiftBtn").addEventListener("click", addShift);
       el("saveSettingsBtn").addEventListener("click", saveSettingsFromForm);
@@ -1116,6 +1164,7 @@
       el("refreshBtn").addEventListener("click", syncFromSheet);
       el("filterMonth").addEventListener("change", () => { renderRecords(); renderStats(); });
       el("filterEmployee").addEventListener("change", renderRecords);
+      el("employeeSelect").addEventListener("change", renderStats);
       el("employeeList").addEventListener("click", event => {
         const button = event.target.closest("[data-delete-employee]");
         if (button) deleteEmployee(button.dataset.deleteEmployee);
