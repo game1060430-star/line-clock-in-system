@@ -27,7 +27,7 @@
       font-family: "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif;
       -webkit-font-smoothing: antialiased;
     }
-    button, input, select, textarea { font: inherit; }
+    button, input, select, textarea { font: inherit; min-width: 0; max-width: 100%; }
     button { cursor: pointer; }
     .app { max-width: 1080px; margin: 0 auto; padding: 14px; }
     .topbar {
@@ -173,6 +173,14 @@
     }
     .attendance-day[data-manual-date] { cursor: pointer; }
     .attendance-day[data-manual-date]:active { transform: scale(0.98); }
+    .attendance-day.selectable { cursor: pointer; }
+    .attendance-day.selected {
+      outline: 3px solid rgba(47, 111, 159, 0.35);
+      border-color: var(--blue);
+      background: #e8f1f8;
+    }
+    .attendance-day.scheduled { background: #e4f7eb; border-color: #9bddb5; }
+    .attendance-day.leave { background: #eef3ef; border-color: #cfd9d3; }
     .attendance-day b { font-size: 14px; line-height: 1; }
     .attendance-day span { font-size: 10px; color: var(--muted); line-height: 1.2; }
     .attendance-day.ok { background: #e4f7eb; border-color: #9bddb5; color: var(--primary-dark); }
@@ -264,6 +272,11 @@
       padding: 9px 10px;
       background: #fbfcfb;
       color: var(--text);
+    }
+    input[type="date"], input[type="month"], input[type="time"] {
+      appearance: none;
+      -webkit-appearance: none;
+      font-size: 16px;
     }
     textarea { min-height: 74px; resize: vertical; }
     input:focus, select:focus, textarea:focus {
@@ -448,10 +461,15 @@
 
           <div class="panel">
             <h3>本次打卡資訊</h3>
+            <div id="employeeIdentity" class="notice" style="margin-bottom: 12px;"></div>
             <div class="form-grid">
               <div>
-                <label for="employeeSelect">測試模式員工</label>
+                <label for="employeeSelect">選擇員工</label>
                 <select id="employeeSelect"></select>
+              </div>
+              <div>
+                <label>LINE 綁定</label>
+                <button id="bindLineBtn" class="btn blue" type="button">綁定我目前的 LINE</button>
               </div>
               <div style="grid-column: 1 / -1;">
                 <label for="noteInput">備註</label>
@@ -705,8 +723,8 @@
                 <select id="scheduleEmployee"></select>
               </div>
               <div>
-                <label for="scheduleDate">日期</label>
-                <input id="scheduleDate" type="date">
+                <label for="scheduleMonth">月份</label>
+                <input id="scheduleMonth" type="month">
               </div>
               <div>
                 <label for="scheduleStart">上班時間</label>
@@ -733,7 +751,15 @@
                 <input id="scheduleNote" type="text" placeholder="例如：臨時早班、支援班">
               </div>
             </div>
-            <button id="saveScheduleBtn" class="btn primary" type="button" style="margin-top: 10px;">儲存每日排班</button>
+            <p class="attendance-note">點選下方日曆日期，可一次選多天，再套用上班/下班時間。</p>
+            <div class="attendance-weekdays" aria-hidden="true">
+              <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+            </div>
+            <div id="scheduleCalendar" class="attendance-calendar"></div>
+            <div class="actions" style="margin-top: 10px;">
+              <button id="saveScheduleBtn" class="btn primary" type="button">套用到選取日期</button>
+              <button id="clearScheduleSelectionBtn" class="btn ghost" type="button">清除選取</button>
+            </div>
             <div id="scheduleList" class="record-list" style="margin-top: 10px;"></div>
           </div>
         </div>
@@ -834,6 +860,7 @@
     let currentProfile = { userId: "", displayName: "測試員工", pictureUrl: "" };
     let syncing = false;
     let adminUnlocked = false;
+    let selectedScheduleDates = new Set();
 
     function deepMerge(base, saved) {
       return {
@@ -967,7 +994,10 @@
     function getSelectedEmployee() {
       if (currentProfile.userId) {
         const matched = state.employees.find(employee => employee.lineUserId === currentProfile.userId);
-        if (matched) return matched;
+        if (matched) {
+          if (el("employeeSelect") && el("employeeSelect").value !== matched.id) el("employeeSelect").value = matched.id;
+          return matched;
+        }
         return {
           id: `line-${currentProfile.userId}`,
           name: currentProfile.displayName,
@@ -1246,6 +1276,21 @@
       `).join("") : `<div class="empty">尚未建立員工</div>`;
     }
 
+    function renderEmployeeIdentity() {
+      if (!el("employeeIdentity")) return;
+      const employee = getSelectedEmployee();
+      const matched = currentProfile.userId
+        ? state.employees.find(item => item.lineUserId === currentProfile.userId)
+        : null;
+      const lineText = currentProfile.userId
+        ? (matched ? "已用 LINE 自動綁定" : "這個 LINE 尚未綁定員工")
+        : "目前不是 LIFF 模式，請先手動選員工測試";
+      el("employeeIdentity").innerHTML = `
+        <strong>目前員工：${escapeHtml(employee?.name || "未選擇")}</strong><br>
+        <span>${escapeHtml(lineText)}</span>
+      `;
+    }
+
     function weekdayName(value) {
       return ["週日", "週一", "週二", "週三", "週四", "週五", "週六"][Number(value)] || "星期";
     }
@@ -1334,6 +1379,36 @@
           </div>
         `;
       }).join("") : `<div class="empty">本月沒有每日排班，會使用員工預設上下班時間。</div>`;
+    }
+
+    function renderScheduleCalendar() {
+      const container = el("scheduleCalendar");
+      if (!container) return;
+      const month = el("scheduleMonth").value || todayParts().month;
+      const employeeId = el("scheduleEmployee").value || state.employees[0]?.id;
+      if (!employeeId) {
+        container.innerHTML = `<div class="empty" style="grid-column:1/-1;">請先選擇員工</div>`;
+        return;
+      }
+      const [year, monthNumber] = month.split("-").map(Number);
+      const daysInMonth = new Date(year, monthNumber, 0).getDate();
+      const firstWeekday = new Date(year, monthNumber - 1, 1).getDay();
+      const cells = [];
+      for (let index = 0; index < firstWeekday; index++) cells.push(`<div class="attendance-day blank" aria-hidden="true"></div>`);
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = `${month}-${String(day).padStart(2, "0")}`;
+        const schedule = getDailySchedule(employeeId, date);
+        const selected = selectedScheduleDates.has(date);
+        const className = schedule?.type === "leave" ? "leave" : schedule ? "scheduled" : "empty";
+        const label = schedule?.type === "leave" ? "請假" : schedule ? `${schedule.start || "--"}-${schedule.end || "--"}` : "未排";
+        cells.push(`
+          <div class="attendance-day selectable ${className} ${selected ? "selected" : ""}" data-schedule-date="${date}">
+            <b>${day}</b>
+            <span>${escapeHtml(label)}</span>
+          </div>
+        `);
+      }
+      container.innerHTML = cells.join("");
     }
 
     function renderRecords() {
@@ -1480,8 +1555,10 @@
     function renderAll() {
       recalcLocalRecords();
       renderEmployees();
+      renderEmployeeIdentity();
       renderWeeklySchedules();
       renderSchedules();
+      renderScheduleCalendar();
       updateWeeklyScheduleDefaults();
       updateScheduleDefaults();
       updateManualClockDefaults();
@@ -1556,9 +1633,26 @@
       renderAll();
     }
 
+    async function bindCurrentLineUser() {
+      if (!currentProfile.userId) return alert("目前沒有 LINE User ID。請用 LINE LIFF 開啟系統後再綁定。");
+      const employee = state.employees.find(item => item.id === el("employeeSelect").value);
+      if (!employee) return alert("請先選擇你的員工姓名");
+      const usedBy = state.employees.find(item => item.lineUserId === currentProfile.userId && item.id !== employee.id);
+      if (usedBy && !confirm(`這個 LINE 已綁定 ${usedBy.name}，要改綁到 ${employee.name} 嗎？`)) return;
+      state.employees = state.employees.map(item => ({
+        ...item,
+        lineUserId: item.id === employee.id ? currentProfile.userId : (item.lineUserId === currentProfile.userId ? "" : item.lineUserId)
+      }));
+      saveState();
+      const updated = state.employees.find(item => item.id === employee.id);
+      if (state.settings.apiUrl) await apiCall("saveEmployee", updated);
+      renderAll();
+      alert(`已綁定 ${updated.name}`);
+    }
+
     function updateScheduleDefaults(force = false) {
-      if (!el("scheduleDate")) return;
-      if (!el("scheduleDate").value) el("scheduleDate").value = todayParts().date;
+      if (!el("scheduleMonth")) return;
+      if (!el("scheduleMonth").value) el("scheduleMonth").value = todayParts().month;
       const employee = state.employees.find(item => item.id === el("scheduleEmployee").value) || state.employees[0];
       if (!employee) return;
       if (force || !el("scheduleStart").value) el("scheduleStart").value = employee.workStart || "06:30";
@@ -1571,32 +1665,36 @@
     async function saveSchedule() {
       if (!requestAdminPin()) return alert("PIN 錯誤");
       const employeeId = el("scheduleEmployee").value;
-      const date = el("scheduleDate").value;
       if (!employeeId) return alert("請先選員工");
-      if (!date) return alert("請選排班日期");
-      const existing = (state.schedules || []).find(schedule => schedule.employeeId === employeeId && schedule.date === date && String(schedule.active) !== "false");
-      const schedule = {
-        id: existing?.id || `schedule-${Date.now()}`,
-        date,
-        employeeId,
-        start: el("scheduleStart").value || "06:30",
-        end: el("scheduleEnd").value || "14:30",
-        inGrace: Number(el("scheduleInGrace").value) || 0,
-        outGrace: Number(el("scheduleOutGrace").value) || 0,
-        breakMinutes: Number(el("scheduleBreak").value) || 0,
-        note: el("scheduleNote").value.trim(),
-        active: true
-      };
-      state.schedules = (state.schedules || []).filter(item => item.id !== schedule.id);
-      state.schedules.push(schedule);
+      const dates = Array.from(selectedScheduleDates).sort();
+      if (dates.length === 0) return alert("請先在月曆選日期");
+      const schedules = dates.map((date, index) => {
+        const existing = (state.schedules || []).find(schedule => schedule.employeeId === employeeId && schedule.date === date && String(schedule.active) !== "false");
+        return {
+          id: existing?.id || `schedule-${Date.now()}-${index}`,
+          date,
+          employeeId,
+          type: "work",
+          start: el("scheduleStart").value || "06:30",
+          end: el("scheduleEnd").value || "14:30",
+          inGrace: Number(el("scheduleInGrace").value) || 0,
+          outGrace: Number(el("scheduleOutGrace").value) || 0,
+          breakMinutes: Number(el("scheduleBreak").value) || 0,
+          note: el("scheduleNote").value.trim(),
+          active: true
+        };
+      });
+      state.schedules = (state.schedules || []).filter(item => !schedules.some(schedule => schedule.id === item.id));
+      state.schedules.push(...schedules);
       saveState();
       if (state.settings.apiUrl) {
-        await apiCall("saveSchedule", schedule);
+        for (const schedule of schedules) await apiCall("saveSchedule", schedule);
         await syncFromSheet();
       } else {
         renderAll();
       }
-      alert("每日排班已儲存");
+      selectedScheduleDates.clear();
+      alert(`已套用 ${schedules.length} 天排班`);
     }
 
     function updateWeeklyScheduleDefaults(force = false) {
@@ -1870,6 +1968,7 @@
       document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
       el("clockInBtn").addEventListener("click", () => clock("in"));
       el("clockOutBtn").addEventListener("click", () => clock("out"));
+      el("bindLineBtn").addEventListener("click", bindCurrentLineUser);
       el("submitRequestBtn").addEventListener("click", submitScheduleRequest);
       el("unlockAdminBtn").addEventListener("click", unlockAdmin);
       document.querySelectorAll("[data-admin-target]").forEach(button => {
@@ -1880,6 +1979,8 @@
       el("weeklyEmployee").addEventListener("change", () => updateWeeklyScheduleDefaults(true));
       el("saveScheduleBtn").addEventListener("click", saveSchedule);
       el("scheduleEmployee").addEventListener("change", () => updateScheduleDefaults(true));
+      el("scheduleMonth").addEventListener("change", () => { selectedScheduleDates.clear(); renderScheduleCalendar(); renderSchedules(); });
+      el("clearScheduleSelectionBtn").addEventListener("click", () => { selectedScheduleDates.clear(); renderScheduleCalendar(); });
       el("saveSettingsBtn").addEventListener("click", saveSettingsFromForm);
       el("useCurrentLocationBtn").addEventListener("click", setCurrentLocationAsSite);
       el("exportCsvBtn").addEventListener("click", exportCsv);
@@ -1899,7 +2000,7 @@
         const day = event.target.closest("[data-manual-date]");
         if (day) prepareManualClockFromCalendar(day.dataset.manualDate, day.dataset.manualType);
       });
-      el("employeeSelect").addEventListener("change", renderStats);
+      el("employeeSelect").addEventListener("change", () => { renderEmployeeIdentity(); renderStats(); });
       el("employeeList").addEventListener("click", event => {
         const button = event.target.closest("[data-delete-employee]");
         if (button) deleteEmployee(button.dataset.deleteEmployee);
@@ -1907,6 +2008,14 @@
       el("scheduleList").addEventListener("click", event => {
         const button = event.target.closest("[data-delete-schedule]");
         if (button) deleteSchedule(button.dataset.deleteSchedule);
+      });
+      el("scheduleCalendar").addEventListener("click", event => {
+        const day = event.target.closest("[data-schedule-date]");
+        if (!day) return;
+        const date = day.dataset.scheduleDate;
+        if (selectedScheduleDates.has(date)) selectedScheduleDates.delete(date);
+        else selectedScheduleDates.add(date);
+        renderScheduleCalendar();
       });
       el("weeklyScheduleList").addEventListener("click", event => {
         const button = event.target.closest("[data-delete-weekly-schedule]");
@@ -1923,7 +2032,7 @@
     async function init() {
       el("filterMonth").value = todayParts().month;
       el("requestDate").value = todayParts().date;
-      el("scheduleDate").value = todayParts().date;
+      el("scheduleMonth").value = todayParts().month;
       updateWeeklyScheduleDefaults();
       bindEvents();
       updateClock();
