@@ -64,9 +64,19 @@ function ensureSheet(name, headers) {
     sheet.setFrozenRows(1);
     return sheet;
   }
-  const missingHeaders = headers.filter(header => !firstRow.includes(header));
-  if (missingHeaders.length > 0) {
-    sheet.getRange(1, firstRow.length + 1, 1, missingHeaders.length).setValues([missingHeaders]);
+  const needsRewrite = headers.some((header, index) => firstRow[index] !== header) || firstRow.length !== headers.length;
+  if (needsRewrite) {
+    const values = sheet.getDataRange().getValues();
+    const oldHeaders = values[0].filter(String);
+    const data = values.slice(1).map(row => {
+      const object = rowToObject(oldHeaders, row);
+      return headers.map(header => object[header] === undefined ? '' : object[header]);
+    });
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    if (data.length > 0) sheet.getRange(2, 1, data.length, headers.length).setValues(data);
+    if (sheet.getLastColumn() > headers.length) {
+      sheet.deleteColumns(headers.length + 1, sheet.getLastColumn() - headers.length);
+    }
     sheet.setFrozenRows(1);
   }
   return sheet;
