@@ -20,7 +20,7 @@
       --shadow: 0 10px 28px rgba(23, 33, 28, 0.08);
     }
     * { box-sizing: border-box; }
-    html, body { margin: 0; min-height: 100%; }
+    html, body { margin: 0; min-height: 100%; overflow-x: hidden; }
     body {
       background: var(--bg);
       color: var(--text);
@@ -171,6 +171,8 @@
       align-content: center;
       gap: 2px;
     }
+    .attendance-day[data-manual-date] { cursor: pointer; }
+    .attendance-day[data-manual-date]:active { transform: scale(0.98); }
     .attendance-day b { font-size: 14px; line-height: 1; }
     .attendance-day span { font-size: 10px; color: var(--muted); line-height: 1.2; }
     .attendance-day.ok { background: #e4f7eb; border-color: #9bddb5; color: var(--primary-dark); }
@@ -208,6 +210,7 @@
       gap: 12px;
       align-items: start;
     }
+    .layout > * { min-width: 0; }
     .panel {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -250,6 +253,7 @@
     .btn.ghost { background: #eef3ef; color: var(--text); border: 1px solid var(--line); }
     .btn:disabled { opacity: 0.55; cursor: not-allowed; }
     .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .span-2 { grid-column: 1 / -1; }
     label { display: block; font-weight: 800; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
     input, select, textarea {
       width: 100%;
@@ -333,12 +337,57 @@
       .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 520px) {
-      .app { padding: 10px; }
+      .app { width: 100%; padding: 8px; }
+      .topbar { gap: 8px; }
       .hero { padding: 14px; }
       .hero h2 { font-size: 23px; }
-      .clock-card, .form-grid, .stat-grid { grid-template-columns: 1fr; }
+      .panel { padding: 10px; }
+      .clock-card, .form-grid, .stat-grid, .admin-shortcuts { grid-template-columns: 1fr; }
       .brand h1 { font-size: 19px; }
-      .profile { width: 100%; }
+      .brand-mark { width: 38px; height: 38px; }
+      .profile { width: 100%; min-width: 0; }
+      .profile-name, .profile-status { white-space: normal; }
+      .attendance-calendar, .attendance-weekdays { gap: 4px; }
+      .attendance-day {
+        min-height: 42px;
+        padding: 5px 2px;
+        border-radius: 6px;
+      }
+      .attendance-day.blank { min-height: 42px; }
+      .attendance-day b { font-size: 13px; }
+      .attendance-day span { font-size: 9px; }
+      .attendance-day span:last-child { display: none; }
+      .table-wrap { overflow-x: visible; }
+      table { min-width: 0; border-collapse: separate; border-spacing: 0 8px; }
+      thead { display: none; }
+      tbody, tr, td { display: block; width: 100%; }
+      tr {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px;
+      }
+      td {
+        border-bottom: 0;
+        padding: 6px 0;
+        display: grid;
+        grid-template-columns: 76px minmax(0, 1fr);
+        gap: 8px;
+      }
+      td::before {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 900;
+      }
+      td:nth-child(1)::before { content: "日期"; }
+      td:nth-child(2)::before { content: "員工"; }
+      td:nth-child(3)::before { content: "上班"; }
+      td:nth-child(4)::before { content: "下班"; }
+      td:nth-child(5)::before { content: "設定"; }
+      td:nth-child(6)::before { content: "狀態"; }
+      td:nth-child(7)::before { content: "工時"; }
+      td:nth-child(8)::before { content: "距離"; }
+      td:nth-child(9)::before { content: "備註"; }
     }
   </style>
 </head>
@@ -478,6 +527,7 @@
               </div>
             </div>
             <button id="manualClockBtn" class="btn primary" type="button" style="margin-top: 10px;">送出補打卡</button>
+            <p id="manualHint" class="attendance-note"></p>
             <div class="actions" style="margin-top: 10px;">
               <button id="refreshBtn" class="btn ghost" type="button">重新整理</button>
               <button id="exportCsvBtn" class="btn blue" type="button">匯出 CSV</button>
@@ -1081,8 +1131,10 @@
         const detail = record
           ? `${record.inActual || "--"} / ${record.outActual || "--"}`
           : (date > todayParts().date ? "" : "未打卡");
+        const canFix = status.className === "bad" || status.className === "warn";
+        const suggestedType = record?.inActual && !record?.outActual ? "out" : "in";
         cells.push(`
-          <div class="attendance-day ${status.className}" title="${escapeHtml(date)} ${escapeHtml(detail)}">
+          <div class="attendance-day ${status.className}" title="${escapeHtml(date)} ${escapeHtml(detail)}"${canFix ? ` data-manual-date="${date}" data-manual-type="${suggestedType}"` : ""}>
             <b>${day}</b>
             <span>${escapeHtml(status.label)}</span>
             <span>${escapeHtml(detail)}</span>
@@ -1143,6 +1195,18 @@
       const type = el("manualType").value || "in";
       const suggestedTime = type === "in" ? (employee.workStart || "06:30") : (employee.workEnd || "14:30");
       if (forceTime || !el("manualTime").value) el("manualTime").value = suggestedTime;
+    }
+
+    function prepareManualClockFromCalendar(date, type) {
+      const employeeId = el("filterEmployee").value || state.employees[0]?.id;
+      if (!employeeId) return alert("請先選擇員工");
+      el("manualEmployee").value = employeeId;
+      el("manualDate").value = date;
+      el("manualType").value = type || "in";
+      updateManualClockDefaults(true);
+      const typeText = el("manualType").value === "in" ? "上班" : "下班";
+      el("manualHint").textContent = `已選擇 ${date}，請確認補${typeText}時間後送出。`;
+      el("manualClockBtn").scrollIntoView({ behavior: "smooth", block: "center" });
     }
 
     function renderAll() {
@@ -1369,6 +1433,10 @@
         updateManualClockDefaults(true);
         renderRecords();
         renderAttendanceCalendar();
+      });
+      el("attendanceCalendar").addEventListener("click", event => {
+        const day = event.target.closest("[data-manual-date]");
+        if (day) prepareManualClockFromCalendar(day.dataset.manualDate, day.dataset.manualType);
       });
       el("employeeSelect").addEventListener("change", renderStats);
       el("employeeList").addEventListener("click", event => {
