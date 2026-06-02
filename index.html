@@ -138,6 +138,48 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
     }
+    .attendance-calendar {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .attendance-day {
+      min-height: 48px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fbfcfb;
+      padding: 6px 4px;
+      text-align: center;
+      display: grid;
+      align-content: center;
+      gap: 2px;
+    }
+    .attendance-day b { font-size: 14px; line-height: 1; }
+    .attendance-day span { font-size: 10px; color: var(--muted); line-height: 1.2; }
+    .attendance-day.ok { background: #e4f7eb; border-color: #9bddb5; color: var(--primary-dark); }
+    .attendance-day.warn { background: #fff0df; border-color: #e6bd81; color: var(--amber); }
+    .attendance-day.bad { background: #fdeaea; border-color: #e6aaaa; color: var(--red); }
+    .attendance-day.empty { opacity: 0.62; }
+    .attendance-legend {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 8px;
+    }
+    .legend-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: -1px;
+    }
+    .legend-dot.ok { background: var(--primary); }
+    .legend-dot.warn { background: var(--amber); }
+    .legend-dot.bad { background: var(--red); }
     .layout {
       display: grid;
       grid-template-columns: minmax(0, 1fr) 340px;
@@ -379,6 +421,12 @@
                 <label for="filterEmployee">員工</label>
                 <select id="filterEmployee"></select>
               </div>
+            </div>
+            <div id="attendanceCalendar" class="attendance-calendar"></div>
+            <div class="attendance-legend">
+              <span><i class="legend-dot ok"></i>正常</span>
+              <span><i class="legend-dot warn"></i>上班中</span>
+              <span><i class="legend-dot bad"></i>異常</span>
             </div>
             <div class="actions" style="margin-top: 10px;">
               <button id="refreshBtn" class="btn ghost" type="button">重新整理</button>
@@ -946,6 +994,52 @@
       }).join("") : `<tr><td colspan="9" class="empty">查無紀錄</td></tr>`;
     }
 
+    function getAttendanceStatus(record) {
+      if (!record) return { className: "empty", label: "無" };
+      const hasIn = Boolean(record.inActual);
+      const hasOut = Boolean(record.outActual);
+      const statuses = [record.inStatus, record.outStatus, record.locationStatus].filter(Boolean);
+      const hasIssue = statuses.some(status => !["準時", "提早", "延後", "範圍內"].includes(status));
+      if (hasIn && !hasOut) return { className: "warn", label: "上班中" };
+      if (!hasIn || !hasOut || hasIssue) return { className: "bad", label: "異常" };
+      return { className: "ok", label: "正常" };
+    }
+
+    function renderAttendanceCalendar() {
+      const container = el("attendanceCalendar");
+      if (!container) return;
+      const month = el("filterMonth").value || todayParts().month;
+      const employeeId = el("filterEmployee").value;
+      if (!employeeId) {
+        container.innerHTML = `<div class="empty" style="grid-column:1/-1;">請先選擇一位員工</div>`;
+        return;
+      }
+      const [year, monthNumber] = month.split("-").map(Number);
+      const daysInMonth = new Date(year, monthNumber, 0).getDate();
+      const recordsByDate = new Map(
+        state.records
+          .filter(record => record.date && record.date.startsWith(month) && record.employeeId === employeeId)
+          .map(record => [record.date, record])
+      );
+      const cells = [];
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = `${month}-${String(day).padStart(2, "0")}`;
+        const record = recordsByDate.get(date);
+        const status = getAttendanceStatus(record);
+        const detail = record
+          ? `${record.inActual || "--"} / ${record.outActual || "--"}`
+          : "未打卡";
+        cells.push(`
+          <div class="attendance-day ${status.className}" title="${escapeHtml(date)} ${escapeHtml(detail)}">
+            <b>${day}</b>
+            <span>${escapeHtml(status.label)}</span>
+            <span>${escapeHtml(detail)}</span>
+          </div>
+        `);
+      }
+      container.innerHTML = cells.join("");
+    }
+
     function renderStats() {
       const today = todayParts().date;
       const month = el("filterMonth").value || todayParts().month;
@@ -992,6 +1086,7 @@
       renderEmployees();
       renderShifts();
       renderRecords();
+      renderAttendanceCalendar();
       renderStats();
       renderSettings();
     }
@@ -1025,6 +1120,9 @@
       adminUnlocked = true;
       el("adminLocked").classList.add("hidden");
       el("adminUnlocked").classList.remove("hidden");
+      if (!el("filterEmployee").value && state.employees[0]) {
+        el("filterEmployee").value = state.employees[0].id;
+      }
       renderAll();
     }
 
@@ -1162,8 +1260,8 @@
       el("exportCsvBtn").addEventListener("click", exportCsv);
       el("clearLocalBtn").addEventListener("click", clearLocalData);
       el("refreshBtn").addEventListener("click", syncFromSheet);
-      el("filterMonth").addEventListener("change", () => { renderRecords(); renderStats(); });
-      el("filterEmployee").addEventListener("change", renderRecords);
+      el("filterMonth").addEventListener("change", () => { renderRecords(); renderAttendanceCalendar(); renderStats(); });
+      el("filterEmployee").addEventListener("change", () => { renderRecords(); renderAttendanceCalendar(); });
       el("employeeSelect").addEventListener("change", renderStats);
       el("employeeList").addEventListener("click", event => {
         const button = event.target.closest("[data-delete-employee]");
