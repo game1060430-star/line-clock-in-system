@@ -4,7 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>LINE 打卡系統</title>
-  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     :root {
       --bg: #f6f7f4;
@@ -904,18 +903,31 @@
       }
     }
 
+    function isLineClient() {
+      return /Line\//i.test(navigator.userAgent || "");
+    }
+
+    function loadLiffSdk() {
+      if (window.liff) return Promise.resolve(window.liff);
+      return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "https://static.line-scdn.net/liff/edge/2/sdk.js";
+        script.charset = "utf-8";
+        script.onload = () => resolve(window.liff);
+        script.onerror = () => reject(new Error("LIFF SDK 載入失敗"));
+        document.head.appendChild(script);
+      });
+    }
+
     async function initLineProfile() {
-      if (!state.settings.liffId || typeof liff === "undefined") {
-        setProfileStatus(state.settings.apiUrl ? "Google Sheet 模式" : "本機測試模式");
+      if (!state.settings.liffId || !isLineClient()) {
+        setProfileStatus(state.settings.apiUrl ? "瀏覽器模式" : "本機測試模式");
         return;
       }
       try {
+        await loadLiffSdk();
         await liff.init({ liffId: state.settings.liffId });
         if (!liff.isLoggedIn()) {
-          if (!liff.isInClient()) {
-            setProfileStatus("瀏覽器模式");
-            return;
-          }
           liff.login();
           return;
         }
@@ -1812,8 +1824,8 @@
       updateClock();
       setInterval(updateClock, 1000);
       renderAll();
-      await initLineProfile();
-      await syncFromSheet();
+      await Promise.allSettled([initLineProfile(), syncFromSheet()]);
+      renderAll();
       handleLaunchAction();
     }
 
