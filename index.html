@@ -342,7 +342,7 @@
     <section class="hero">
       <div>
         <h2>從 LINE 開啟，手機直接上下班打卡</h2>
-        <p>管理者可設定店址、打卡範圍、班別與容許時間。正式版會把資料寫進 Google Sheet，並自動判斷準時、遲到、早退與計算工時。</p>
+        <p>管理者可設定店址、打卡範圍，以及每位員工自己的上班時間、下班時間與容許時間。系統會寫入 Google Sheet，並自動判斷準時、遲到、早退與計算工時。</p>
       </div>
       <div class="hero-visual" aria-hidden="true">
         <div class="day-cell on"></div><div class="day-cell on"></div><div class="day-cell"></div><div class="day-cell on"></div><div class="day-cell on"></div><div class="day-cell"></div><div class="day-cell"></div>
@@ -374,10 +374,6 @@
             <h3>本次打卡資訊</h3>
             <div class="form-grid">
               <div>
-                <label for="shiftSelect">班別</label>
-                <select id="shiftSelect"></select>
-              </div>
-              <div>
                 <label for="employeeSelect">測試模式員工</label>
                 <select id="employeeSelect"></select>
               </div>
@@ -393,7 +389,7 @@
           <div id="adminLocked" class="panel">
             <h3>管理區</h3>
             <div class="notice" style="margin-bottom: 12px;">
-              員工只能使用打卡功能。查看全部紀錄、員工名單、班別與系統設定前，請先輸入管理 PIN。
+              員工只能使用打卡功能。查看全部紀錄、員工名單、上下班時間與系統設定前，請先輸入管理 PIN。
             </div>
             <button id="unlockAdminBtn" class="btn primary" type="button">輸入管理 PIN</button>
           </div>
@@ -403,7 +399,7 @@
               <div class="admin-shortcuts">
                 <button class="btn blue" type="button" data-admin-target="records">全部紀錄</button>
                 <button class="btn blue" type="button" data-admin-target="people">員工</button>
-                <button class="btn blue" type="button" data-admin-target="settings">設定</button>
+                <button class="btn blue" type="button" data-admin-target="settings">店家設定</button>
               </div>
             </div>
           </div>
@@ -442,7 +438,7 @@
                   <th>員工</th>
                   <th>上班</th>
                   <th>下班</th>
-                  <th>班別</th>
+                  <th>上班設定</th>
                   <th>狀態</th>
                   <th>工時</th>
                   <th>距離</th>
@@ -469,6 +465,26 @@
               <div>
                 <label for="newEmployeeRate">時薪</label>
                 <input id="newEmployeeRate" type="number" min="0" step="1" placeholder="190">
+              </div>
+              <div>
+                <label for="newEmployeeStart">上班時間</label>
+                <input id="newEmployeeStart" type="time" value="06:30">
+              </div>
+              <div>
+                <label for="newEmployeeEnd">下班時間</label>
+                <input id="newEmployeeEnd" type="time" value="14:30">
+              </div>
+              <div>
+                <label for="newEmployeeInGrace">上班容許分鐘</label>
+                <input id="newEmployeeInGrace" type="number" min="0" step="1" value="15">
+              </div>
+              <div>
+                <label for="newEmployeeOutGrace">下班容許分鐘</label>
+                <input id="newEmployeeOutGrace" type="number" min="0" step="1" value="15">
+              </div>
+              <div>
+                <label for="newEmployeeBreak">休息分鐘</label>
+                <input id="newEmployeeBreak" type="number" min="0" step="1" value="0">
               </div>
               <div style="grid-column: 1 / -1;">
                 <label for="newEmployeeLineId">LINE User ID</label>
@@ -521,37 +537,6 @@
             </div>
           </div>
 
-          <div class="panel">
-            <h3>班別與容許時間</h3>
-            <div id="shiftList"></div>
-            <div class="form-grid" style="margin-top: 10px;">
-              <div>
-                <label for="newShiftName">班別名稱</label>
-                <input id="newShiftName" type="text" placeholder="早班">
-              </div>
-              <div>
-                <label for="newShiftRate">休息分鐘</label>
-                <input id="newShiftBreak" type="number" min="0" step="1" value="0">
-              </div>
-              <div>
-                <label for="newShiftStart">上班時間</label>
-                <input id="newShiftStart" type="time" value="06:30">
-              </div>
-              <div>
-                <label for="newShiftEnd">下班時間</label>
-                <input id="newShiftEnd" type="time" value="14:30">
-              </div>
-              <div>
-                <label for="newShiftInGrace">上班容許分鐘</label>
-                <input id="newShiftInGrace" type="number" min="0" step="1" value="15">
-              </div>
-              <div>
-                <label for="newShiftOutGrace">下班容許分鐘</label>
-                <input id="newShiftOutGrace" type="number" min="0" step="1" value="15">
-              </div>
-            </div>
-            <button id="addShiftBtn" class="btn primary" type="button" style="margin-top: 10px;">新增班別</button>
-          </div>
         </div>
       </section>
 
@@ -593,12 +578,8 @@
         radiusMeters: 200
       },
       employees: [
-        { id: "emp-1", name: "測試員工", hourlyRate: 190, lineUserId: "" },
-        { id: "emp-2", name: "店長", hourlyRate: 220, lineUserId: "" }
-      ],
-      shifts: [
-        { id: "shift-morning", name: "早班", start: "06:30", end: "14:30", inGrace: 15, outGrace: 15, breakMinutes: 0 },
-        { id: "shift-evening", name: "晚班", start: "14:30", end: "22:30", inGrace: 15, outGrace: 15, breakMinutes: 0 }
+        { id: "emp-1", name: "測試員工", hourlyRate: 190, workStart: "06:30", workEnd: "14:30", inGrace: 15, outGrace: 15, breakMinutes: 0, lineUserId: "" },
+        { id: "emp-2", name: "店長", hourlyRate: 220, workStart: "06:30", workEnd: "14:30", inGrace: 15, outGrace: 15, breakMinutes: 0, lineUserId: "" }
       ],
       records: []
     };
@@ -611,10 +592,21 @@
     function deepMerge(base, saved) {
       return {
         settings: Object.assign({}, base.settings, saved.settings || {}),
-        employees: saved.employees || base.employees,
-        shifts: saved.shifts || base.shifts,
+        employees: (saved.employees || base.employees).map(normalizeEmployee),
         records: saved.records || base.records
       };
+    }
+
+    function normalizeEmployee(employee) {
+      return Object.assign({
+        hourlyRate: 0,
+        workStart: "06:30",
+        workEnd: "14:30",
+        inGrace: 15,
+        outGrace: 15,
+        breakMinutes: 0,
+        lineUserId: ""
+      }, employee);
     }
 
     function loadState() {
@@ -708,8 +700,7 @@
       try {
         const data = await apiCall("getBootstrap");
         if (data && data.payload) {
-          state.employees = data.payload.employees.length ? data.payload.employees : state.employees;
-          state.shifts = data.payload.shifts.length ? data.payload.shifts : state.shifts;
+          state.employees = data.payload.employees.length ? data.payload.employees.map(normalizeEmployee) : state.employees;
           state.records = data.payload.records || state.records;
           saveState();
           renderAll();
@@ -729,6 +720,11 @@
           id: `line-${currentProfile.userId}`,
           name: currentProfile.displayName,
           hourlyRate: 0,
+          workStart: "06:30",
+          workEnd: "14:30",
+          inGrace: 15,
+          outGrace: 15,
+          breakMinutes: 0,
           lineUserId: currentProfile.userId
         };
       }
@@ -736,8 +732,17 @@
       return state.employees.find(employee => employee.id === selectedId) || state.employees[0];
     }
 
-    function selectedShift() {
-      return state.shifts.find(shift => shift.id === el("shiftSelect").value) || state.shifts[0];
+    function employeeSchedule(employee) {
+      const normalized = normalizeEmployee(employee || {});
+      return {
+        id: `employee-${normalized.id || "unknown"}`,
+        name: `${normalized.name || "員工"} 個人時段`,
+        start: normalized.workStart || "06:30",
+        end: normalized.workEnd || "14:30",
+        inGrace: Number(normalized.inGrace ?? 15),
+        outGrace: Number(normalized.outGrace ?? 15),
+        breakMinutes: Number(normalized.breakMinutes || 0)
+      };
     }
 
     function minutesOfDay(timeText) {
@@ -804,7 +809,7 @@
       button.textContent = "定位中...";
       try {
         const employee = getSelectedEmployee();
-        const shift = selectedShift();
+        const shift = employeeSchedule(employee);
         const parts = todayParts();
         const judge = judgeClock(type, parts.time, shift);
         const position = await getPosition();
@@ -911,9 +916,9 @@
 
     function recalcLocalRecords() {
       state.records.forEach(record => {
-        const shift = state.shifts.find(item => item.id === record.shiftId);
         const employee = state.employees.find(item => item.id === record.employeeId);
-        if (!record.inCounted || !record.outCounted || !shift) {
+        const shift = employeeSchedule(employee);
+        if (!record.inCounted || !record.outCounted || !employee) {
           record.hours = 0;
           record.pay = 0;
           return;
@@ -953,25 +958,11 @@
         <div class="employee-row">
           <div>
             <strong>${escapeHtml(employee.name)}</strong>
-            <small>時薪 ${Number(employee.hourlyRate || 0).toLocaleString()}${employee.lineUserId ? " / 已綁定 LINE" : " / 尚未綁定 LINE"}</small>
+            <small>${employee.workStart || "06:30"}-${employee.workEnd || "14:30"} / 容許 ${employee.inGrace ?? 15}/${employee.outGrace ?? 15} 分 / 時薪 ${Number(employee.hourlyRate || 0).toLocaleString()}${employee.lineUserId ? " / 已綁定 LINE" : " / 尚未綁定 LINE"}</small>
           </div>
           <button class="btn red" type="button" data-delete-employee="${employee.id}">刪除</button>
         </div>
       `).join("") : `<div class="empty">尚未建立員工</div>`;
-    }
-
-    function renderShifts() {
-      const options = state.shifts.map(shift => `<option value="${shift.id}">${escapeHtml(shift.name)} ${shift.start}-${shift.end}</option>`).join("");
-      el("shiftSelect").innerHTML = options;
-      el("shiftList").innerHTML = state.shifts.length ? state.shifts.map(shift => `
-        <div class="shift-row">
-          <div>
-            <strong>${escapeHtml(shift.name)}</strong>
-            <small>${shift.start}-${shift.end} / 上班容許 ${shift.inGrace} 分 / 下班容許 ${shift.outGrace} 分 / 休息 ${shift.breakMinutes || 0} 分</small>
-          </div>
-          <button class="btn red" type="button" data-delete-shift="${shift.id}">刪除</button>
-        </div>
-      `).join("") : `<div class="empty">尚未建立班別</div>`;
     }
 
     function renderRecords() {
@@ -1084,7 +1075,6 @@
     function renderAll() {
       recalcLocalRecords();
       renderEmployees();
-      renderShifts();
       renderRecords();
       renderAttendanceCalendar();
       renderStats();
@@ -1132,6 +1122,11 @@
         id: `emp-${Date.now()}`,
         name: el("newEmployeeName").value.trim(),
         hourlyRate: Number(el("newEmployeeRate").value) || 0,
+        workStart: el("newEmployeeStart").value || "06:30",
+        workEnd: el("newEmployeeEnd").value || "14:30",
+        inGrace: Number(el("newEmployeeInGrace").value) || 0,
+        outGrace: Number(el("newEmployeeOutGrace").value) || 0,
+        breakMinutes: Number(el("newEmployeeBreak").value) || 0,
         lineUserId: el("newEmployeeLineId").value.trim()
       };
       if (!employee.name) return alert("請輸入員工姓名");
@@ -1140,6 +1135,11 @@
       if (state.settings.apiUrl) await apiCall("saveEmployee", employee);
       el("newEmployeeName").value = "";
       el("newEmployeeRate").value = "";
+      el("newEmployeeStart").value = "06:30";
+      el("newEmployeeEnd").value = "14:30";
+      el("newEmployeeInGrace").value = "15";
+      el("newEmployeeOutGrace").value = "15";
+      el("newEmployeeBreak").value = "0";
       el("newEmployeeLineId").value = "";
       renderAll();
     }
@@ -1150,34 +1150,6 @@
       state.employees = state.employees.filter(employee => employee.id !== id);
       saveState();
       if (state.settings.apiUrl) await apiCall("deleteEmployee", { id });
-      renderAll();
-    }
-
-    async function addShift() {
-      if (!requestAdminPin()) return alert("PIN 錯誤");
-      const shift = {
-        id: `shift-${Date.now()}`,
-        name: el("newShiftName").value.trim(),
-        start: el("newShiftStart").value,
-        end: el("newShiftEnd").value,
-        inGrace: Number(el("newShiftInGrace").value) || 0,
-        outGrace: Number(el("newShiftOutGrace").value) || 0,
-        breakMinutes: Number(el("newShiftBreak").value) || 0
-      };
-      if (!shift.name || !shift.start || !shift.end) return alert("請輸入完整班別資料");
-      state.shifts.push(shift);
-      saveState();
-      if (state.settings.apiUrl) await apiCall("saveShift", shift);
-      el("newShiftName").value = "";
-      renderAll();
-    }
-
-    async function deleteShift(id) {
-      if (!requestAdminPin()) return alert("PIN 錯誤");
-      if (!confirm("確定刪除此班別？")) return;
-      state.shifts = state.shifts.filter(shift => shift.id !== id);
-      saveState();
-      if (state.settings.apiUrl) await apiCall("deleteShift", { id });
       renderAll();
     }
 
@@ -1211,7 +1183,7 @@
 
     function exportCsv() {
       const rows = filteredRecords();
-      const header = ["日期", "員工", "班別", "上班實際", "上班計算", "上班狀態", "下班實際", "下班計算", "下班狀態", "工時", "預估薪資", "定位狀態", "距離公尺", "備註"];
+      const header = ["日期", "員工", "上班設定", "上班實際", "上班計算", "上班狀態", "下班實際", "下班計算", "下班狀態", "工時", "預估薪資", "定位狀態", "距離公尺", "備註"];
       const csvRows = [header, ...rows.map(record => [
         record.date,
         record.employeeName,
@@ -1254,7 +1226,6 @@
         button.addEventListener("click", () => switchTab(button.dataset.adminTarget));
       });
       el("addEmployeeBtn").addEventListener("click", addEmployee);
-      el("addShiftBtn").addEventListener("click", addShift);
       el("saveSettingsBtn").addEventListener("click", saveSettingsFromForm);
       el("useCurrentLocationBtn").addEventListener("click", setCurrentLocationAsSite);
       el("exportCsvBtn").addEventListener("click", exportCsv);
@@ -1266,10 +1237,6 @@
       el("employeeList").addEventListener("click", event => {
         const button = event.target.closest("[data-delete-employee]");
         if (button) deleteEmployee(button.dataset.deleteEmployee);
-      });
-      el("shiftList").addEventListener("click", event => {
-        const button = event.target.closest("[data-delete-shift]");
-        if (button) deleteShift(button.dataset.deleteShift);
       });
     }
 

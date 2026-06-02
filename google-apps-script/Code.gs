@@ -10,7 +10,7 @@ const SHEETS = {
 
 const HEADERS = {
   [SHEETS.SETTINGS]: ['key', 'value'],
-  [SHEETS.EMPLOYEES]: ['id', 'name', 'hourlyRate', 'lineUserId', 'active'],
+  [SHEETS.EMPLOYEES]: ['id', 'name', 'hourlyRate', 'workStart', 'workEnd', 'inGrace', 'outGrace', 'breakMinutes', 'lineUserId', 'active'],
   [SHEETS.SHIFTS]: ['id', 'name', 'start', 'end', 'inGrace', 'outGrace', 'breakMinutes', 'active'],
   [SHEETS.RAW]: ['id', 'date', 'employeeId', 'employeeName', 'lineUserId', 'type', 'actualTime', 'countedTime', 'shiftId', 'shiftName', 'clockStatus', 'locationStatus', 'distance', 'locationText', 'note', 'createdAt'],
   [SHEETS.DAILY]: ['dailyKey', 'date', 'employeeId', 'employeeName', 'lineUserId', 'shiftId', 'shiftName', 'inActual', 'inCounted', 'inStatus', 'outActual', 'outCounted', 'outStatus', 'locationStatus', 'distance', 'note', 'hours', 'pay', 'updatedAt']
@@ -57,11 +57,16 @@ function ensureSheet(name, headers) {
   const ss = getSpreadsheet();
   let sheet = ss.getSheetByName(name);
   if (!sheet) sheet = ss.insertSheet(name);
-  const firstRow = sheet.getRange(1, 1, 1, headers.length).getValues()[0];
-  const missingHeaders = headers.some((header, index) => firstRow[index] !== header);
-  if (missingHeaders) {
-    sheet.clear();
+  const lastColumn = Math.max(sheet.getLastColumn(), 1);
+  const firstRow = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].filter(String);
+  if (firstRow.length === 0) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
+    return sheet;
+  }
+  const missingHeaders = headers.filter(header => !firstRow.includes(header));
+  if (missingHeaders.length > 0) {
+    sheet.getRange(1, firstRow.length + 1, 1, missingHeaders.length).setValues([missingHeaders]);
     sheet.setFrozenRows(1);
   }
   return sheet;
@@ -73,8 +78,8 @@ function seedDefaults() {
     if (settings[key] === undefined || settings[key] === '') writeSetting(key, DEFAULT_SETTINGS[key]);
   });
   if (rowsAsObjects(SHEETS.EMPLOYEES).length === 0) {
-    appendObject(SHEETS.EMPLOYEES, { id: 'emp-1', name: '測試員工', hourlyRate: 190, lineUserId: '', active: true });
-    appendObject(SHEETS.EMPLOYEES, { id: 'emp-2', name: '店長', hourlyRate: 220, lineUserId: '', active: true });
+    appendObject(SHEETS.EMPLOYEES, { id: 'emp-1', name: '測試員工', hourlyRate: 190, workStart: '06:30', workEnd: '14:30', inGrace: 15, outGrace: 15, breakMinutes: 0, lineUserId: '', active: true });
+    appendObject(SHEETS.EMPLOYEES, { id: 'emp-2', name: '店長', hourlyRate: 220, workStart: '06:30', workEnd: '14:30', inGrace: 15, outGrace: 15, breakMinutes: 0, lineUserId: '', active: true });
   }
   if (rowsAsObjects(SHEETS.SHIFTS).length === 0) {
     appendObject(SHEETS.SHIFTS, { id: 'shift-morning', name: '早班', start: '06:30', end: '14:30', inGrace: 15, outGrace: 15, breakMinutes: 0, active: true });
@@ -98,9 +103,8 @@ function saveClock(record) {
   appendObject(SHEETS.RAW, raw);
 
   const employees = rowsAsObjects(SHEETS.EMPLOYEES);
-  const shifts = rowsAsObjects(SHEETS.SHIFTS);
   const employee = employees.find(item => item.id === record.employeeId) || {};
-  const shift = shifts.find(item => item.id === record.shiftId) || {};
+  const shift = employeeSchedule(employee, record);
   const daily = upsertDaily(record, employee, shift, now);
   return daily;
 }
@@ -183,6 +187,18 @@ function calculateHoursAndPay(daily, employee, shift) {
   return { hours: hours, pay: pay };
 }
 
+function employeeSchedule(employee, record) {
+  return {
+    id: record.shiftId || ('employee-' + (employee.id || 'unknown')),
+    name: record.shiftName || ((employee.name || '員工') + ' 個人時段'),
+    start: employee.workStart || '06:30',
+    end: employee.workEnd || '14:30',
+    inGrace: Number(employee.inGrace || 15),
+    outGrace: Number(employee.outGrace || 15),
+    breakMinutes: Number(employee.breakMinutes || 0)
+  };
+}
+
 function minutesOfDay(timeText) {
   const parts = String(timeText || '00:00').split(':').map(Number);
   return (parts[0] || 0) * 60 + (parts[1] || 0);
@@ -200,6 +216,11 @@ function saveEmployee(employee) {
     id: employee.id || Utilities.getUuid(),
     name: employee.name || '',
     hourlyRate: Number(employee.hourlyRate || 0),
+    workStart: employee.workStart || '06:30',
+    workEnd: employee.workEnd || '14:30',
+    inGrace: Number(employee.inGrace || 15),
+    outGrace: Number(employee.outGrace || 15),
+    breakMinutes: Number(employee.breakMinutes || 0),
     lineUserId: employee.lineUserId || '',
     active: true
   };
