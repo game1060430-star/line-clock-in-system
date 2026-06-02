@@ -5,6 +5,7 @@ const SHEETS = {
   EMPLOYEES: '員工',
   WEEKLY_SCHEDULES: '每週固定班',
   SCHEDULES: '每日排班',
+  REQUESTS: '排班申請',
   SHIFTS: '班別',
   RAW: '打卡明細',
   DAILY: '每日出勤'
@@ -14,7 +15,8 @@ const HEADERS = {
   [SHEETS.SETTINGS]: ['key', 'value'],
   [SHEETS.EMPLOYEES]: ['id', 'name', 'hourlyRate', 'workStart', 'workEnd', 'inGrace', 'outGrace', 'breakMinutes', 'lineUserId', 'active'],
   [SHEETS.WEEKLY_SCHEDULES]: ['id', 'employeeId', 'weekday', 'start', 'end', 'inGrace', 'outGrace', 'breakMinutes', 'note', 'active'],
-  [SHEETS.SCHEDULES]: ['id', 'date', 'employeeId', 'start', 'end', 'inGrace', 'outGrace', 'breakMinutes', 'note', 'active'],
+  [SHEETS.SCHEDULES]: ['id', 'date', 'employeeId', 'type', 'start', 'end', 'inGrace', 'outGrace', 'breakMinutes', 'note', 'active'],
+  [SHEETS.REQUESTS]: ['id', 'date', 'employeeId', 'employeeName', 'lineUserId', 'type', 'start', 'end', 'reason', 'status', 'adminNote', 'createdAt', 'reviewedAt', 'active'],
   [SHEETS.SHIFTS]: ['id', 'name', 'start', 'end', 'inGrace', 'outGrace', 'breakMinutes', 'active'],
   [SHEETS.RAW]: ['id', 'date', 'employeeId', 'employeeName', 'lineUserId', 'type', 'actualTime', 'countedTime', 'shiftId', 'shiftName', 'clockStatus', 'locationStatus', 'distance', 'locationText', 'note', 'createdAt'],
   [SHEETS.DAILY]: ['dailyKey', 'date', 'employeeId', 'employeeName', 'lineUserId', 'shiftId', 'shiftName', 'inActual', 'inCounted', 'inStatus', 'outActual', 'outCounted', 'outStatus', 'locationStatus', 'distance', 'note', 'hours', 'pay', 'updatedAt']
@@ -48,6 +50,8 @@ function doPost(e) {
     if (action === 'deleteWeeklySchedule') return jsonOutput({ ok: true, payload: setActive(SHEETS.WEEKLY_SCHEDULES, payload.id, false) });
     if (action === 'saveSchedule') return jsonOutput({ ok: true, payload: saveSchedule(payload) });
     if (action === 'deleteSchedule') return jsonOutput({ ok: true, payload: setActive(SHEETS.SCHEDULES, payload.id, false) });
+    if (action === 'saveRequest') return jsonOutput({ ok: true, payload: saveRequest(payload) });
+    if (action === 'reviewRequest') return jsonOutput({ ok: true, payload: reviewRequest(payload) });
     if (action === 'saveShift') return jsonOutput({ ok: true, payload: saveShift(payload) });
     if (action === 'deleteShift') return jsonOutput({ ok: true, payload: setActive(SHEETS.SHIFTS, payload.id, false) });
     return jsonOutput({ ok: false, error: 'Unknown action: ' + action });
@@ -111,6 +115,7 @@ function getBootstrap() {
     employees: rowsAsObjects(SHEETS.EMPLOYEES).filter(row => String(row.active) !== 'false'),
     weeklySchedules: rowsAsObjects(SHEETS.WEEKLY_SCHEDULES).filter(row => String(row.active) !== 'false'),
     schedules: rowsAsObjects(SHEETS.SCHEDULES).filter(row => String(row.active) !== 'false'),
+    requests: rowsAsObjects(SHEETS.REQUESTS).filter(row => String(row.active) !== 'false'),
     shifts: rowsAsObjects(SHEETS.SHIFTS).filter(row => String(row.active) !== 'false'),
     records: rowsAsObjects(SHEETS.DAILY)
   };
@@ -223,7 +228,8 @@ function employeeSchedule(employee, record) {
   const schedule = daily || weekly;
   return {
     id: schedule ? ('schedule-' + schedule.id) : (record.shiftId || ('employee-' + (employee.id || 'unknown'))),
-    name: daily ? '每日排班' : (weekly ? '每週固定班' : (record.shiftName || ((employee.name || '員工') + ' 個人時段'))),
+    name: daily && daily.type === 'leave' ? '請假' : (daily ? '每日排班' : (weekly ? '每週固定班' : (record.shiftName || ((employee.name || '員工') + ' 個人時段')))),
+    type: schedule ? (schedule.type || 'work') : 'work',
     start: schedule ? (schedule.start || '06:30') : (employee.workStart || '06:30'),
     end: schedule ? (schedule.end || '14:30') : (employee.workEnd || '14:30'),
     inGrace: Number(schedule ? (schedule.inGrace || 15) : (employee.inGrace || 15)),
@@ -270,8 +276,9 @@ function saveSchedule(schedule) {
     id: schedule.id || Utilities.getUuid(),
     date: schedule.date || '',
     employeeId: schedule.employeeId || '',
-    start: schedule.start || '06:30',
-    end: schedule.end || '14:30',
+    type: schedule.type || 'work',
+    start: schedule.type === 'leave' ? '' : (schedule.start || '06:30'),
+    end: schedule.type === 'leave' ? '' : (schedule.end || '14:30'),
     inGrace: Number(schedule.inGrace || 15),
     outGrace: Number(schedule.outGrace || 15),
     breakMinutes: Number(schedule.breakMinutes || 0),
@@ -309,6 +316,58 @@ function saveWeeklySchedule(schedule) {
   if (existing && existing.id) row.id = existing.id;
   upsertById(SHEETS.WEEKLY_SCHEDULES, row);
   return row;
+}
+
+function saveRequest(request) {
+  const row = {
+    id: request.id || Utilities.getUuid(),
+    date: request.date || '',
+    employeeId: request.employeeId || '',
+    employeeName: request.employeeName || '',
+    lineUserId: request.lineUserId || '',
+    type: request.type || 'leave',
+    start: request.start || '',
+    end: request.end || '',
+    reason: request.reason || '',
+    status: request.status || 'pending',
+    adminNote: request.adminNote || '',
+    createdAt: request.createdAt || new Date().toISOString(),
+    reviewedAt: request.reviewedAt || '',
+    active: true
+  };
+  upsertById(SHEETS.REQUESTS, row);
+  return row;
+}
+
+function reviewRequest(payload) {
+  const id = payload.id;
+  const status = payload.status || 'pending';
+  const requests = rowsAsObjects(SHEETS.REQUESTS);
+  const request = requests.find(item => item.id === id);
+  if (!request) throw new Error('Request not found');
+  request.status = status;
+  request.adminNote = payload.adminNote || request.adminNote || '';
+  request.reviewedAt = new Date().toISOString();
+  request.active = true;
+  upsertById(SHEETS.REQUESTS, request);
+  if (status === 'approved') {
+    const employees = rowsAsObjects(SHEETS.EMPLOYEES);
+    const employee = employees.find(item => item.id === request.employeeId) || {};
+    saveSchedule({
+      id: 'approved-' + request.id,
+      date: request.date,
+      employeeId: request.employeeId,
+      type: request.type === 'leave' ? 'leave' : 'work',
+      start: request.type === 'leave' ? '' : (request.start || employee.workStart || '06:30'),
+      end: request.type === 'leave' ? '' : (request.end || employee.workEnd || '14:30'),
+      inGrace: employee.inGrace || 15,
+      outGrace: employee.outGrace || 15,
+      breakMinutes: employee.breakMinutes || 0,
+      note: (request.type === 'leave' ? '請假：' : '改班：') + (request.reason || ''),
+      active: true
+    });
+  }
+  return request;
 }
 
 function saveShift(shift) {

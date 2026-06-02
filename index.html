@@ -428,6 +428,7 @@
 
     <nav class="tabs" aria-label="主要功能">
       <button class="tab active" data-tab="clock">打卡</button>
+      <button class="tab" data-tab="request">申請</button>
       <button class="tab" data-tab="admin">管理</button>
     </nav>
 
@@ -460,6 +461,46 @@
           </div>
         </div>
 
+        <div id="tab-request" class="tab-pane hidden">
+          <div class="panel">
+            <h3>排班申請</h3>
+            <div class="form-grid">
+              <div>
+                <label for="requestEmployee">員工</label>
+                <select id="requestEmployee"></select>
+              </div>
+              <div>
+                <label for="requestDate">日期</label>
+                <input id="requestDate" type="date">
+              </div>
+              <div>
+                <label for="requestType">申請類型</label>
+                <select id="requestType">
+                  <option value="leave">請假</option>
+                  <option value="change">改上班時間</option>
+                </select>
+              </div>
+              <div>
+                <label for="requestStart">改班上班時間</label>
+                <input id="requestStart" type="time" value="06:30">
+              </div>
+              <div>
+                <label for="requestEnd">改班下班時間</label>
+                <input id="requestEnd" type="time" value="13:30">
+              </div>
+              <div class="span-2">
+                <label for="requestReason">原因</label>
+                <textarea id="requestReason" placeholder="例如：家裡有事請假、當天想改 08:00 上班"></textarea>
+              </div>
+            </div>
+            <button id="submitRequestBtn" class="btn primary" type="button" style="margin-top: 10px;">送出申請</button>
+          </div>
+          <div class="panel">
+            <h3>我的申請紀錄</h3>
+            <div id="myRequestList" class="record-list"></div>
+          </div>
+        </div>
+
         <div id="tab-admin" class="tab-pane hidden">
           <div id="adminLocked" class="panel">
             <h3>管理區</h3>
@@ -474,9 +515,17 @@
               <div class="admin-shortcuts">
                 <button class="btn blue" type="button" data-admin-target="records">全部紀錄</button>
                 <button class="btn blue" type="button" data-admin-target="people">員工</button>
+                <button class="btn blue" type="button" data-admin-target="approvals">申請審核</button>
                 <button class="btn blue" type="button" data-admin-target="settings">店家設定</button>
               </div>
             </div>
+          </div>
+        </div>
+
+        <div id="tab-approvals" class="tab-pane hidden">
+          <div class="panel">
+            <h3>申請審核</h3>
+            <div id="approvalList" class="record-list"></div>
           </div>
         </div>
 
@@ -777,6 +826,7 @@
       ],
       weeklySchedules: [],
       schedules: [],
+      requests: [],
       records: []
     };
 
@@ -791,6 +841,7 @@
         employees: (saved.employees || base.employees).map(normalizeEmployee),
         weeklySchedules: saved.weeklySchedules || base.weeklySchedules,
         schedules: saved.schedules || base.schedules,
+        requests: saved.requests || base.requests,
         records: saved.records || base.records
       };
     }
@@ -901,6 +952,7 @@
           state.employees = data.payload.employees.length ? data.payload.employees.map(normalizeEmployee) : state.employees;
           state.weeklySchedules = data.payload.weeklySchedules || state.weeklySchedules || [];
           state.schedules = data.payload.schedules || state.schedules || [];
+          state.requests = data.payload.requests || state.requests || [];
           state.records = data.payload.records || state.records;
           saveState();
           renderAll();
@@ -933,7 +985,7 @@
     }
 
     function getDailySchedule(employeeId, date) {
-      return state.schedules.find(schedule =>
+      return (state.schedules || []).find(schedule =>
         String(schedule.active) !== "false" &&
         schedule.employeeId === employeeId &&
         schedule.date === date
@@ -960,7 +1012,8 @@
       const schedule = daily || weekly;
       return {
         id: schedule ? `schedule-${schedule.id}` : `employee-${normalized.id || "unknown"}`,
-        name: daily ? "每日排班" : (weekly ? "每週固定班" : `${normalized.name || "員工"} 個人時段`),
+        name: daily?.type === "leave" ? "請假" : (daily ? "每日排班" : (weekly ? "每週固定班" : `${normalized.name || "員工"} 個人時段`)),
+        type: daily?.type || weekly?.type || "work",
         start: schedule?.start || normalized.workStart || "06:30",
         end: schedule?.end || normalized.workEnd || "14:30",
         inGrace: Number(schedule?.inGrace ?? normalized.inGrace ?? 15),
@@ -1179,6 +1232,7 @@
       el("employeeSelect").innerHTML = employeeOptions;
       el("filterEmployee").innerHTML = `<option value="">全部員工</option>${employeeOptions}`;
       if (el("manualEmployee")) el("manualEmployee").innerHTML = employeeOptions;
+      if (el("requestEmployee")) el("requestEmployee").innerHTML = employeeOptions;
       if (el("scheduleEmployee")) el("scheduleEmployee").innerHTML = employeeOptions;
       if (el("weeklyEmployee")) el("weeklyEmployee").innerHTML = employeeOptions;
       el("employeeList").innerHTML = state.employees.length ? state.employees.map(employee => `
@@ -1194,6 +1248,52 @@
 
     function weekdayName(value) {
       return ["週日", "週一", "週二", "週三", "週四", "週五", "週六"][Number(value)] || "星期";
+    }
+
+    function requestTypeText(type) {
+      return type === "leave" ? "請假" : "改班";
+    }
+
+    function requestStatusText(status) {
+      return { pending: "待審核", approved: "已核准", rejected: "已拒絕" }[status] || "待審核";
+    }
+
+    function renderMyRequests() {
+      if (!el("myRequestList")) return;
+      const employee = getSelectedEmployee();
+      const rows = (state.requests || [])
+        .filter(item => String(item.active) !== "false")
+        .filter(item => item.employeeId === employee?.id || (currentProfile.userId && item.lineUserId === currentProfile.userId))
+        .sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+      el("myRequestList").innerHTML = rows.length ? rows.map(item => `
+        <div class="record">
+          <div>
+            <strong>${escapeHtml(item.date)} ${requestTypeText(item.type)} / ${requestStatusText(item.status)}</strong>
+            <small>${item.type === "change" ? `${escapeHtml(item.start || "--")} - ${escapeHtml(item.end || "--")} / ` : ""}${escapeHtml(item.reason || "")}</small>
+          </div>
+          <span class="badge ${item.status === "approved" ? "ok" : item.status === "rejected" ? "bad" : "warn"}">${requestStatusText(item.status)}</span>
+        </div>
+      `).join("") : `<div class="empty">尚未送出申請。</div>`;
+    }
+
+    function renderApprovals() {
+      if (!el("approvalList")) return;
+      const rows = (state.requests || [])
+        .filter(item => String(item.active) !== "false")
+        .filter(item => (item.status || "pending") === "pending")
+        .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+      el("approvalList").innerHTML = rows.length ? rows.map(item => `
+        <div class="record">
+          <div>
+            <strong>${escapeHtml(item.employeeName || "員工")} ${escapeHtml(item.date)} ${requestTypeText(item.type)}</strong>
+            <small>${item.type === "change" ? `${escapeHtml(item.start || "--")} - ${escapeHtml(item.end || "--")} / ` : ""}${escapeHtml(item.reason || "")}</small>
+          </div>
+          <div class="actions">
+            <button class="btn primary" type="button" data-approve-request="${item.id}">核准</button>
+            <button class="btn red" type="button" data-reject-request="${item.id}">拒絕</button>
+          </div>
+        </div>
+      `).join("") : `<div class="empty">目前沒有待審核申請。</div>`;
     }
 
     function renderWeeklySchedules() {
@@ -1260,6 +1360,8 @@
       const today = todayParts().date;
       if (!record && date > today) return { className: "empty", label: "未到" };
       if (!record) return { className: "bad", label: "異常" };
+      const employeeId = el("filterEmployee")?.value;
+      if (!record && employeeId && getDailySchedule(employeeId, date)?.type === "leave") return { className: "ok", label: "請假" };
       const hasIn = Boolean(record.inActual);
       const hasOut = Boolean(record.outActual);
       const statuses = [record.inStatus, record.outStatus, record.locationStatus].filter(Boolean);
@@ -1383,6 +1485,8 @@
       updateWeeklyScheduleDefaults();
       updateScheduleDefaults();
       updateManualClockDefaults();
+      renderMyRequests();
+      renderApprovals();
       renderRecords();
       renderAttendanceCalendar();
       renderStats();
@@ -1400,7 +1504,7 @@
     }
 
     function switchTab(tabName) {
-      if (["records", "people", "settings"].includes(tabName) && !adminUnlocked) {
+      if (["records", "people", "approvals", "settings"].includes(tabName) && !adminUnlocked) {
         tabName = "admin";
       }
       document.querySelectorAll(".tab").forEach(tab => tab.classList.toggle("active", tab.dataset.tab === tabName));
@@ -1534,6 +1638,78 @@
         renderAll();
       }
       alert("每週固定班已儲存");
+    }
+
+    async function submitScheduleRequest() {
+      const employeeId = el("requestEmployee").value || getSelectedEmployee()?.id;
+      const employee = state.employees.find(item => item.id === employeeId) || getSelectedEmployee();
+      if (!employee) return alert("請先選員工");
+      const date = el("requestDate").value;
+      const type = el("requestType").value;
+      if (!date) return alert("請選申請日期");
+      if (type === "change" && (!el("requestStart").value || !el("requestEnd").value)) return alert("請填改班上下班時間");
+      const request = {
+        id: `request-${Date.now()}`,
+        date,
+        employeeId: employee.id,
+        employeeName: employee.name,
+        lineUserId: employee.lineUserId || currentProfile.userId || "",
+        type,
+        start: type === "change" ? el("requestStart").value : "",
+        end: type === "change" ? el("requestEnd").value : "",
+        reason: el("requestReason").value.trim(),
+        status: "pending",
+        createdAt: new Date().toISOString(),
+        active: true
+      };
+      state.requests = [request, ...(state.requests || [])];
+      saveState();
+      if (state.settings.apiUrl) {
+        await apiCall("saveRequest", request);
+        await syncFromSheet();
+      } else {
+        renderAll();
+      }
+      el("requestReason").value = "";
+      alert("申請已送出，等待管理者審核");
+    }
+
+    function scheduleFromRequest(request) {
+      const employee = state.employees.find(item => item.id === request.employeeId) || {};
+      return {
+        id: `approved-${request.id}`,
+        date: request.date,
+        employeeId: request.employeeId,
+        type: request.type === "leave" ? "leave" : "work",
+        start: request.type === "leave" ? "" : (request.start || employee.workStart || "06:30"),
+        end: request.type === "leave" ? "" : (request.end || employee.workEnd || "14:30"),
+        inGrace: employee.inGrace ?? 15,
+        outGrace: employee.outGrace ?? 15,
+        breakMinutes: employee.breakMinutes || 0,
+        note: request.type === "leave" ? `請假：${request.reason || ""}` : `改班：${request.reason || ""}`,
+        active: true
+      };
+    }
+
+    async function reviewRequest(id, status) {
+      if (!requestAdminPin()) return alert("PIN 錯誤");
+      const request = (state.requests || []).find(item => item.id === id);
+      if (!request) return;
+      request.status = status;
+      request.reviewedAt = new Date().toISOString();
+      if (status === "approved") {
+        const schedule = scheduleFromRequest(request);
+        state.schedules = (state.schedules || []).filter(item => !(item.employeeId === schedule.employeeId && item.date === schedule.date));
+        state.schedules.push(schedule);
+      }
+      saveState();
+      if (state.settings.apiUrl) {
+        await apiCall("reviewRequest", { id, status });
+        await syncFromSheet();
+      } else {
+        renderAll();
+      }
+      alert(status === "approved" ? "已核准申請" : "已拒絕申請");
     }
 
     async function manualClock() {
@@ -1694,6 +1870,7 @@
       document.querySelectorAll(".tab").forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
       el("clockInBtn").addEventListener("click", () => clock("in"));
       el("clockOutBtn").addEventListener("click", () => clock("out"));
+      el("submitRequestBtn").addEventListener("click", submitScheduleRequest);
       el("unlockAdminBtn").addEventListener("click", unlockAdmin);
       document.querySelectorAll("[data-admin-target]").forEach(button => {
         button.addEventListener("click", () => switchTab(button.dataset.adminTarget));
@@ -1735,10 +1912,17 @@
         const button = event.target.closest("[data-delete-weekly-schedule]");
         if (button) deleteWeeklySchedule(button.dataset.deleteWeeklySchedule);
       });
+      el("approvalList").addEventListener("click", event => {
+        const approve = event.target.closest("[data-approve-request]");
+        const reject = event.target.closest("[data-reject-request]");
+        if (approve) reviewRequest(approve.dataset.approveRequest, "approved");
+        if (reject) reviewRequest(reject.dataset.rejectRequest, "rejected");
+      });
     }
 
     async function init() {
       el("filterMonth").value = todayParts().month;
+      el("requestDate").value = todayParts().date;
       el("scheduleDate").value = todayParts().date;
       updateWeeklyScheduleDefaults();
       bindEvents();
