@@ -253,6 +253,7 @@
     .btn.ghost { background: #eef3ef; color: var(--text); border: 1px solid var(--line); }
     .btn:disabled { opacity: 0.55; cursor: not-allowed; }
     .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .form-grid > * { min-width: 0; }
     .span-2 { grid-column: 1 / -1; }
     label { display: block; font-weight: 800; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
     input, select, textarea {
@@ -335,6 +336,9 @@
       .topbar, .hero, .layout { grid-template-columns: 1fr; }
       .profile { justify-content: flex-start; }
       .tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 720px) {
+      .form-grid, .admin-shortcuts { grid-template-columns: 1fr; }
     }
     @media (max-width: 520px) {
       .app { width: 100%; padding: 8px; }
@@ -598,6 +602,53 @@
             <button id="addEmployeeBtn" class="btn primary" type="button" style="margin-top: 10px;">新增員工</button>
           </div>
           <div class="panel">
+            <h3>每週固定班</h3>
+            <div class="form-grid">
+              <div>
+                <label for="weeklyEmployee">員工</label>
+                <select id="weeklyEmployee"></select>
+              </div>
+              <div>
+                <label for="weeklyDay">星期</label>
+                <select id="weeklyDay">
+                  <option value="1">週一</option>
+                  <option value="2">週二</option>
+                  <option value="3">週三</option>
+                  <option value="4">週四</option>
+                  <option value="5">週五</option>
+                  <option value="6">週六</option>
+                  <option value="0">週日</option>
+                </select>
+              </div>
+              <div>
+                <label for="weeklyStart">上班時間</label>
+                <input id="weeklyStart" type="time" value="06:30">
+              </div>
+              <div>
+                <label for="weeklyEnd">下班時間</label>
+                <input id="weeklyEnd" type="time" value="13:30">
+              </div>
+              <div>
+                <label for="weeklyInGrace">上班容許分鐘</label>
+                <input id="weeklyInGrace" type="number" min="0" step="1" value="15">
+              </div>
+              <div>
+                <label for="weeklyOutGrace">下班容許分鐘</label>
+                <input id="weeklyOutGrace" type="number" min="0" step="1" value="15">
+              </div>
+              <div>
+                <label for="weeklyBreak">休息分鐘</label>
+                <input id="weeklyBreak" type="number" min="0" step="1" value="0">
+              </div>
+              <div>
+                <label for="weeklyNote">備註</label>
+                <input id="weeklyNote" type="text" placeholder="例如：週二四五固定班">
+              </div>
+            </div>
+            <button id="saveWeeklyScheduleBtn" class="btn primary" type="button" style="margin-top: 10px;">儲存每週固定班</button>
+            <div id="weeklyScheduleList" class="record-list" style="margin-top: 10px;"></div>
+          </div>
+          <div class="panel">
             <h3>每日排班</h3>
             <div class="form-grid">
               <div>
@@ -724,6 +775,7 @@
         { id: "emp-1", name: "測試員工", hourlyRate: 190, workStart: "06:30", workEnd: "14:30", inGrace: 15, outGrace: 15, breakMinutes: 0, lineUserId: "" },
         { id: "emp-2", name: "店長", hourlyRate: 220, workStart: "06:30", workEnd: "14:30", inGrace: 15, outGrace: 15, breakMinutes: 0, lineUserId: "" }
       ],
+      weeklySchedules: [],
       schedules: [],
       records: []
     };
@@ -737,6 +789,7 @@
       return {
         settings: Object.assign({}, base.settings, saved.settings || {}),
         employees: (saved.employees || base.employees).map(normalizeEmployee),
+        weeklySchedules: saved.weeklySchedules || base.weeklySchedules,
         schedules: saved.schedules || base.schedules,
         records: saved.records || base.records
       };
@@ -846,6 +899,7 @@
         const data = await apiCall("getBootstrap");
         if (data && data.payload) {
           state.employees = data.payload.employees.length ? data.payload.employees.map(normalizeEmployee) : state.employees;
+          state.weeklySchedules = data.payload.weeklySchedules || state.weeklySchedules || [];
           state.schedules = data.payload.schedules || state.schedules || [];
           state.records = data.payload.records || state.records;
           saveState();
@@ -886,17 +940,32 @@
       );
     }
 
+    function weekdayOf(date) {
+      return new Date(`${date}T00:00:00`).getDay();
+    }
+
+    function getWeeklySchedule(employeeId, date) {
+      const weekday = weekdayOf(date);
+      return (state.weeklySchedules || []).find(schedule =>
+        String(schedule.active) !== "false" &&
+        schedule.employeeId === employeeId &&
+        Number(schedule.weekday) === weekday
+      );
+    }
+
     function employeeSchedule(employee, date = todayParts().date) {
       const normalized = normalizeEmployee(employee || {});
       const daily = getDailySchedule(normalized.id, date);
+      const weekly = daily ? null : getWeeklySchedule(normalized.id, date);
+      const schedule = daily || weekly;
       return {
-        id: daily ? `schedule-${daily.id}` : `employee-${normalized.id || "unknown"}`,
-        name: daily ? "每日排班" : `${normalized.name || "員工"} 個人時段`,
-        start: daily?.start || normalized.workStart || "06:30",
-        end: daily?.end || normalized.workEnd || "14:30",
-        inGrace: Number(daily?.inGrace ?? normalized.inGrace ?? 15),
-        outGrace: Number(daily?.outGrace ?? normalized.outGrace ?? 15),
-        breakMinutes: Number((daily?.breakMinutes ?? normalized.breakMinutes) || 0)
+        id: schedule ? `schedule-${schedule.id}` : `employee-${normalized.id || "unknown"}`,
+        name: daily ? "每日排班" : (weekly ? "每週固定班" : `${normalized.name || "員工"} 個人時段`),
+        start: schedule?.start || normalized.workStart || "06:30",
+        end: schedule?.end || normalized.workEnd || "14:30",
+        inGrace: Number(schedule?.inGrace ?? normalized.inGrace ?? 15),
+        outGrace: Number(schedule?.outGrace ?? normalized.outGrace ?? 15),
+        breakMinutes: Number((schedule?.breakMinutes ?? normalized.breakMinutes) || 0)
       };
     }
 
@@ -1111,6 +1180,7 @@
       el("filterEmployee").innerHTML = `<option value="">全部員工</option>${employeeOptions}`;
       if (el("manualEmployee")) el("manualEmployee").innerHTML = employeeOptions;
       if (el("scheduleEmployee")) el("scheduleEmployee").innerHTML = employeeOptions;
+      if (el("weeklyEmployee")) el("weeklyEmployee").innerHTML = employeeOptions;
       el("employeeList").innerHTML = state.employees.length ? state.employees.map(employee => `
         <div class="employee-row">
           <div>
@@ -1120,6 +1190,29 @@
           <button class="btn red" type="button" data-delete-employee="${employee.id}">刪除</button>
         </div>
       `).join("") : `<div class="empty">尚未建立員工</div>`;
+    }
+
+    function weekdayName(value) {
+      return ["週日", "週一", "週二", "週三", "週四", "週五", "週六"][Number(value)] || "星期";
+    }
+
+    function renderWeeklySchedules() {
+      const schedules = (state.weeklySchedules || [])
+        .filter(schedule => String(schedule.active) !== "false")
+        .sort((a, b) => Number(a.weekday) - Number(b.weekday));
+      if (!el("weeklyScheduleList")) return;
+      el("weeklyScheduleList").innerHTML = schedules.length ? schedules.map(schedule => {
+        const employee = state.employees.find(item => item.id === schedule.employeeId);
+        return `
+          <div class="record">
+            <div>
+              <strong>${escapeHtml(employee?.name || "員工")} ${weekdayName(schedule.weekday)}</strong>
+              <small>${escapeHtml(schedule.start || "--")} - ${escapeHtml(schedule.end || "--")} / 容許 ${Number(schedule.inGrace ?? 15)}/${Number(schedule.outGrace ?? 15)} 分 / 休息 ${Number(schedule.breakMinutes || 0)} 分${schedule.note ? ` / ${escapeHtml(schedule.note)}` : ""}</small>
+            </div>
+            <button class="btn red" type="button" data-delete-weekly-schedule="${schedule.id}">刪除</button>
+          </div>
+        `;
+      }).join("") : `<div class="empty">尚未設定每週固定班。</div>`;
     }
 
     function renderSchedules() {
@@ -1285,7 +1378,9 @@
     function renderAll() {
       recalcLocalRecords();
       renderEmployees();
+      renderWeeklySchedules();
       renderSchedules();
+      updateWeeklyScheduleDefaults();
       updateScheduleDefaults();
       updateManualClockDefaults();
       renderRecords();
@@ -1400,6 +1495,47 @@
       alert("每日排班已儲存");
     }
 
+    function updateWeeklyScheduleDefaults(force = false) {
+      if (!el("weeklyEmployee")) return;
+      const employee = state.employees.find(item => item.id === el("weeklyEmployee").value) || state.employees[0];
+      if (!employee) return;
+      if (force || !el("weeklyStart").value) el("weeklyStart").value = employee.workStart || "06:30";
+      if (force || !el("weeklyEnd").value) el("weeklyEnd").value = employee.workEnd || "14:30";
+      if (force || !el("weeklyInGrace").value) el("weeklyInGrace").value = employee.inGrace ?? 15;
+      if (force || !el("weeklyOutGrace").value) el("weeklyOutGrace").value = employee.outGrace ?? 15;
+      if (force || !el("weeklyBreak").value) el("weeklyBreak").value = employee.breakMinutes || 0;
+    }
+
+    async function saveWeeklySchedule() {
+      if (!requestAdminPin()) return alert("PIN 錯誤");
+      const employeeId = el("weeklyEmployee").value;
+      const weekday = Number(el("weeklyDay").value);
+      if (!employeeId) return alert("請先選員工");
+      const existing = (state.weeklySchedules || []).find(schedule => schedule.employeeId === employeeId && Number(schedule.weekday) === weekday && String(schedule.active) !== "false");
+      const schedule = {
+        id: existing?.id || `weekly-${Date.now()}`,
+        employeeId,
+        weekday,
+        start: el("weeklyStart").value || "06:30",
+        end: el("weeklyEnd").value || "13:30",
+        inGrace: Number(el("weeklyInGrace").value) || 0,
+        outGrace: Number(el("weeklyOutGrace").value) || 0,
+        breakMinutes: Number(el("weeklyBreak").value) || 0,
+        note: el("weeklyNote").value.trim(),
+        active: true
+      };
+      state.weeklySchedules = (state.weeklySchedules || []).filter(item => item.id !== schedule.id);
+      state.weeklySchedules.push(schedule);
+      saveState();
+      if (state.settings.apiUrl) {
+        await apiCall("saveWeeklySchedule", schedule);
+        await syncFromSheet();
+      } else {
+        renderAll();
+      }
+      alert("每週固定班已儲存");
+    }
+
     async function manualClock() {
       if (!adminUnlocked && !requestAdminPin()) return alert("PIN 錯誤");
       const employeeId = el("manualEmployee").value || el("filterEmployee").value;
@@ -1471,6 +1607,19 @@
       saveState();
       if (state.settings.apiUrl) {
         await apiCall("deleteSchedule", { id });
+        await syncFromSheet();
+      } else {
+        renderAll();
+      }
+    }
+
+    async function deleteWeeklySchedule(id) {
+      if (!requestAdminPin()) return alert("PIN 錯誤");
+      if (!confirm("確定刪除這筆每週固定班？")) return;
+      state.weeklySchedules = (state.weeklySchedules || []).filter(schedule => schedule.id !== id);
+      saveState();
+      if (state.settings.apiUrl) {
+        await apiCall("deleteWeeklySchedule", { id });
         await syncFromSheet();
       } else {
         renderAll();
@@ -1550,6 +1699,8 @@
         button.addEventListener("click", () => switchTab(button.dataset.adminTarget));
       });
       el("addEmployeeBtn").addEventListener("click", addEmployee);
+      el("saveWeeklyScheduleBtn").addEventListener("click", saveWeeklySchedule);
+      el("weeklyEmployee").addEventListener("change", () => updateWeeklyScheduleDefaults(true));
       el("saveScheduleBtn").addEventListener("click", saveSchedule);
       el("scheduleEmployee").addEventListener("change", () => updateScheduleDefaults(true));
       el("saveSettingsBtn").addEventListener("click", saveSettingsFromForm);
@@ -1580,11 +1731,16 @@
         const button = event.target.closest("[data-delete-schedule]");
         if (button) deleteSchedule(button.dataset.deleteSchedule);
       });
+      el("weeklyScheduleList").addEventListener("click", event => {
+        const button = event.target.closest("[data-delete-weekly-schedule]");
+        if (button) deleteWeeklySchedule(button.dataset.deleteWeeklySchedule);
+      });
     }
 
     async function init() {
       el("filterMonth").value = todayParts().month;
       el("scheduleDate").value = todayParts().date;
+      updateWeeklyScheduleDefaults();
       bindEvents();
       updateClock();
       setInterval(updateClock, 1000);
