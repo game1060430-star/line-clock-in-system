@@ -3,6 +3,7 @@ const SPREADSHEET_ID = '';
 const SHEETS = {
   SETTINGS: '設定',
   EMPLOYEES: '員工',
+  SCHEDULES: '每日排班',
   SHIFTS: '班別',
   RAW: '打卡明細',
   DAILY: '每日出勤'
@@ -11,6 +12,7 @@ const SHEETS = {
 const HEADERS = {
   [SHEETS.SETTINGS]: ['key', 'value'],
   [SHEETS.EMPLOYEES]: ['id', 'name', 'hourlyRate', 'workStart', 'workEnd', 'inGrace', 'outGrace', 'breakMinutes', 'lineUserId', 'active'],
+  [SHEETS.SCHEDULES]: ['id', 'date', 'employeeId', 'start', 'end', 'inGrace', 'outGrace', 'breakMinutes', 'note', 'active'],
   [SHEETS.SHIFTS]: ['id', 'name', 'start', 'end', 'inGrace', 'outGrace', 'breakMinutes', 'active'],
   [SHEETS.RAW]: ['id', 'date', 'employeeId', 'employeeName', 'lineUserId', 'type', 'actualTime', 'countedTime', 'shiftId', 'shiftName', 'clockStatus', 'locationStatus', 'distance', 'locationText', 'note', 'createdAt'],
   [SHEETS.DAILY]: ['dailyKey', 'date', 'employeeId', 'employeeName', 'lineUserId', 'shiftId', 'shiftName', 'inActual', 'inCounted', 'inStatus', 'outActual', 'outCounted', 'outStatus', 'locationStatus', 'distance', 'note', 'hours', 'pay', 'updatedAt']
@@ -40,6 +42,8 @@ function doPost(e) {
     if (action === 'saveSettings') return jsonOutput({ ok: true, payload: saveSettings(payload) });
     if (action === 'saveEmployee') return jsonOutput({ ok: true, payload: saveEmployee(payload) });
     if (action === 'deleteEmployee') return jsonOutput({ ok: true, payload: setActive(SHEETS.EMPLOYEES, payload.id, false) });
+    if (action === 'saveSchedule') return jsonOutput({ ok: true, payload: saveSchedule(payload) });
+    if (action === 'deleteSchedule') return jsonOutput({ ok: true, payload: setActive(SHEETS.SCHEDULES, payload.id, false) });
     if (action === 'saveShift') return jsonOutput({ ok: true, payload: saveShift(payload) });
     if (action === 'deleteShift') return jsonOutput({ ok: true, payload: setActive(SHEETS.SHIFTS, payload.id, false) });
     return jsonOutput({ ok: false, error: 'Unknown action: ' + action });
@@ -101,6 +105,7 @@ function getBootstrap() {
   return {
     settings: readSettings(),
     employees: rowsAsObjects(SHEETS.EMPLOYEES).filter(row => String(row.active) !== 'false'),
+    schedules: rowsAsObjects(SHEETS.SCHEDULES).filter(row => String(row.active) !== 'false'),
     shifts: rowsAsObjects(SHEETS.SHIFTS).filter(row => String(row.active) !== 'false'),
     records: rowsAsObjects(SHEETS.DAILY)
   };
@@ -198,14 +203,20 @@ function calculateHoursAndPay(daily, employee, shift) {
 }
 
 function employeeSchedule(employee, record) {
+  const schedules = rowsAsObjects(SHEETS.SCHEDULES);
+  const daily = schedules.find(schedule =>
+    String(schedule.active) !== 'false' &&
+    schedule.employeeId === employee.id &&
+    schedule.date === record.date
+  );
   return {
-    id: record.shiftId || ('employee-' + (employee.id || 'unknown')),
-    name: record.shiftName || ((employee.name || '員工') + ' 個人時段'),
-    start: employee.workStart || '06:30',
-    end: employee.workEnd || '14:30',
-    inGrace: Number(employee.inGrace || 15),
-    outGrace: Number(employee.outGrace || 15),
-    breakMinutes: Number(employee.breakMinutes || 0)
+    id: daily ? ('schedule-' + daily.id) : (record.shiftId || ('employee-' + (employee.id || 'unknown'))),
+    name: daily ? '每日排班' : (record.shiftName || ((employee.name || '員工') + ' 個人時段')),
+    start: daily ? (daily.start || '06:30') : (employee.workStart || '06:30'),
+    end: daily ? (daily.end || '14:30') : (employee.workEnd || '14:30'),
+    inGrace: Number(daily ? (daily.inGrace || 15) : (employee.inGrace || 15)),
+    outGrace: Number(daily ? (daily.outGrace || 15) : (employee.outGrace || 15)),
+    breakMinutes: Number(daily ? (daily.breakMinutes || 0) : (employee.breakMinutes || 0))
   };
 }
 
@@ -235,6 +246,29 @@ function saveEmployee(employee) {
     active: true
   };
   upsertById(SHEETS.EMPLOYEES, row);
+  return row;
+}
+
+function saveSchedule(schedule) {
+  const row = {
+    id: schedule.id || Utilities.getUuid(),
+    date: schedule.date || '',
+    employeeId: schedule.employeeId || '',
+    start: schedule.start || '06:30',
+    end: schedule.end || '14:30',
+    inGrace: Number(schedule.inGrace || 15),
+    outGrace: Number(schedule.outGrace || 15),
+    breakMinutes: Number(schedule.breakMinutes || 0),
+    note: schedule.note || '',
+    active: true
+  };
+  const existing = rowsAsObjects(SHEETS.SCHEDULES).find(item =>
+    String(item.active) !== 'false' &&
+    item.employeeId === row.employeeId &&
+    item.date === row.date
+  );
+  if (existing && existing.id) row.id = existing.id;
+  upsertById(SHEETS.SCHEDULES, row);
   return row;
 }
 

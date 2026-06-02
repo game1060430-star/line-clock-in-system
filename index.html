@@ -597,6 +597,45 @@
             </div>
             <button id="addEmployeeBtn" class="btn primary" type="button" style="margin-top: 10px;">新增員工</button>
           </div>
+          <div class="panel">
+            <h3>每日排班</h3>
+            <div class="form-grid">
+              <div>
+                <label for="scheduleEmployee">員工</label>
+                <select id="scheduleEmployee"></select>
+              </div>
+              <div>
+                <label for="scheduleDate">日期</label>
+                <input id="scheduleDate" type="date">
+              </div>
+              <div>
+                <label for="scheduleStart">上班時間</label>
+                <input id="scheduleStart" type="time" value="06:30">
+              </div>
+              <div>
+                <label for="scheduleEnd">下班時間</label>
+                <input id="scheduleEnd" type="time" value="14:30">
+              </div>
+              <div>
+                <label for="scheduleInGrace">上班容許分鐘</label>
+                <input id="scheduleInGrace" type="number" min="0" step="1" value="15">
+              </div>
+              <div>
+                <label for="scheduleOutGrace">下班容許分鐘</label>
+                <input id="scheduleOutGrace" type="number" min="0" step="1" value="15">
+              </div>
+              <div>
+                <label for="scheduleBreak">休息分鐘</label>
+                <input id="scheduleBreak" type="number" min="0" step="1" value="0">
+              </div>
+              <div>
+                <label for="scheduleNote">備註</label>
+                <input id="scheduleNote" type="text" placeholder="例如：臨時早班、支援班">
+              </div>
+            </div>
+            <button id="saveScheduleBtn" class="btn primary" type="button" style="margin-top: 10px;">儲存每日排班</button>
+            <div id="scheduleList" class="record-list" style="margin-top: 10px;"></div>
+          </div>
         </div>
 
         <div id="tab-settings" class="tab-pane hidden">
@@ -685,6 +724,7 @@
         { id: "emp-1", name: "測試員工", hourlyRate: 190, workStart: "06:30", workEnd: "14:30", inGrace: 15, outGrace: 15, breakMinutes: 0, lineUserId: "" },
         { id: "emp-2", name: "店長", hourlyRate: 220, workStart: "06:30", workEnd: "14:30", inGrace: 15, outGrace: 15, breakMinutes: 0, lineUserId: "" }
       ],
+      schedules: [],
       records: []
     };
 
@@ -697,6 +737,7 @@
       return {
         settings: Object.assign({}, base.settings, saved.settings || {}),
         employees: (saved.employees || base.employees).map(normalizeEmployee),
+        schedules: saved.schedules || base.schedules,
         records: saved.records || base.records
       };
     }
@@ -805,6 +846,7 @@
         const data = await apiCall("getBootstrap");
         if (data && data.payload) {
           state.employees = data.payload.employees.length ? data.payload.employees.map(normalizeEmployee) : state.employees;
+          state.schedules = data.payload.schedules || state.schedules || [];
           state.records = data.payload.records || state.records;
           saveState();
           renderAll();
@@ -836,16 +878,25 @@
       return state.employees.find(employee => employee.id === selectedId) || state.employees[0];
     }
 
-    function employeeSchedule(employee) {
+    function getDailySchedule(employeeId, date) {
+      return state.schedules.find(schedule =>
+        String(schedule.active) !== "false" &&
+        schedule.employeeId === employeeId &&
+        schedule.date === date
+      );
+    }
+
+    function employeeSchedule(employee, date = todayParts().date) {
       const normalized = normalizeEmployee(employee || {});
+      const daily = getDailySchedule(normalized.id, date);
       return {
-        id: `employee-${normalized.id || "unknown"}`,
-        name: `${normalized.name || "員工"} 個人時段`,
-        start: normalized.workStart || "06:30",
-        end: normalized.workEnd || "14:30",
-        inGrace: Number(normalized.inGrace ?? 15),
-        outGrace: Number(normalized.outGrace ?? 15),
-        breakMinutes: Number(normalized.breakMinutes || 0)
+        id: daily ? `schedule-${daily.id}` : `employee-${normalized.id || "unknown"}`,
+        name: daily ? "每日排班" : `${normalized.name || "員工"} 個人時段`,
+        start: daily?.start || normalized.workStart || "06:30",
+        end: daily?.end || normalized.workEnd || "14:30",
+        inGrace: Number(daily?.inGrace ?? normalized.inGrace ?? 15),
+        outGrace: Number(daily?.outGrace ?? normalized.outGrace ?? 15),
+        breakMinutes: Number((daily?.breakMinutes ?? normalized.breakMinutes) || 0)
       };
     }
 
@@ -913,8 +964,8 @@
       button.textContent = "定位中...";
       try {
         const employee = getSelectedEmployee();
-        const shift = employeeSchedule(employee);
         const parts = todayParts();
+        const shift = employeeSchedule(employee, parts.date);
         const judge = judgeClock(type, parts.time, shift);
         const position = await getPosition();
         let distance = null;
@@ -1021,7 +1072,7 @@
     function recalcLocalRecords() {
       state.records.forEach(record => {
         const employee = state.employees.find(item => item.id === record.employeeId);
-        const shift = employeeSchedule(employee);
+        const shift = employeeSchedule(employee, record.date);
         if (!record.inCounted || !record.outCounted || !employee) {
           record.hours = 0;
           record.pay = 0;
@@ -1059,6 +1110,7 @@
       el("employeeSelect").innerHTML = employeeOptions;
       el("filterEmployee").innerHTML = `<option value="">全部員工</option>${employeeOptions}`;
       if (el("manualEmployee")) el("manualEmployee").innerHTML = employeeOptions;
+      if (el("scheduleEmployee")) el("scheduleEmployee").innerHTML = employeeOptions;
       el("employeeList").innerHTML = state.employees.length ? state.employees.map(employee => `
         <div class="employee-row">
           <div>
@@ -1068,6 +1120,27 @@
           <button class="btn red" type="button" data-delete-employee="${employee.id}">刪除</button>
         </div>
       `).join("") : `<div class="empty">尚未建立員工</div>`;
+    }
+
+    function renderSchedules() {
+      const month = el("filterMonth")?.value || todayParts().month;
+      const schedules = (state.schedules || [])
+        .filter(schedule => String(schedule.active) !== "false")
+        .filter(schedule => !month || String(schedule.date || "").startsWith(month))
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      if (!el("scheduleList")) return;
+      el("scheduleList").innerHTML = schedules.length ? schedules.map(schedule => {
+        const employee = state.employees.find(item => item.id === schedule.employeeId);
+        return `
+          <div class="record">
+            <div>
+              <strong>${escapeHtml(schedule.date)} ${escapeHtml(employee?.name || "員工")}</strong>
+              <small>${escapeHtml(schedule.start || "--")} - ${escapeHtml(schedule.end || "--")} / 容許 ${Number(schedule.inGrace ?? 15)}/${Number(schedule.outGrace ?? 15)} 分 / 休息 ${Number(schedule.breakMinutes || 0)} 分${schedule.note ? ` / ${escapeHtml(schedule.note)}` : ""}</small>
+            </div>
+            <button class="btn red" type="button" data-delete-schedule="${schedule.id}">刪除</button>
+          </div>
+        `;
+      }).join("") : `<div class="empty">本月沒有每日排班，會使用員工預設上下班時間。</div>`;
     }
 
     function renderRecords() {
@@ -1212,6 +1285,8 @@
     function renderAll() {
       recalcLocalRecords();
       renderEmployees();
+      renderSchedules();
+      updateScheduleDefaults();
       updateManualClockDefaults();
       renderRecords();
       renderAttendanceCalendar();
@@ -1282,6 +1357,49 @@
       renderAll();
     }
 
+    function updateScheduleDefaults(force = false) {
+      if (!el("scheduleDate")) return;
+      if (!el("scheduleDate").value) el("scheduleDate").value = todayParts().date;
+      const employee = state.employees.find(item => item.id === el("scheduleEmployee").value) || state.employees[0];
+      if (!employee) return;
+      if (force || !el("scheduleStart").value) el("scheduleStart").value = employee.workStart || "06:30";
+      if (force || !el("scheduleEnd").value) el("scheduleEnd").value = employee.workEnd || "14:30";
+      if (force || !el("scheduleInGrace").value) el("scheduleInGrace").value = employee.inGrace ?? 15;
+      if (force || !el("scheduleOutGrace").value) el("scheduleOutGrace").value = employee.outGrace ?? 15;
+      if (force || !el("scheduleBreak").value) el("scheduleBreak").value = employee.breakMinutes || 0;
+    }
+
+    async function saveSchedule() {
+      if (!requestAdminPin()) return alert("PIN 錯誤");
+      const employeeId = el("scheduleEmployee").value;
+      const date = el("scheduleDate").value;
+      if (!employeeId) return alert("請先選員工");
+      if (!date) return alert("請選排班日期");
+      const existing = (state.schedules || []).find(schedule => schedule.employeeId === employeeId && schedule.date === date && String(schedule.active) !== "false");
+      const schedule = {
+        id: existing?.id || `schedule-${Date.now()}`,
+        date,
+        employeeId,
+        start: el("scheduleStart").value || "06:30",
+        end: el("scheduleEnd").value || "14:30",
+        inGrace: Number(el("scheduleInGrace").value) || 0,
+        outGrace: Number(el("scheduleOutGrace").value) || 0,
+        breakMinutes: Number(el("scheduleBreak").value) || 0,
+        note: el("scheduleNote").value.trim(),
+        active: true
+      };
+      state.schedules = (state.schedules || []).filter(item => item.id !== schedule.id);
+      state.schedules.push(schedule);
+      saveState();
+      if (state.settings.apiUrl) {
+        await apiCall("saveSchedule", schedule);
+        await syncFromSheet();
+      } else {
+        renderAll();
+      }
+      alert("每日排班已儲存");
+    }
+
     async function manualClock() {
       if (!adminUnlocked && !requestAdminPin()) return alert("PIN 錯誤");
       const employeeId = el("manualEmployee").value || el("filterEmployee").value;
@@ -1293,7 +1411,7 @@
       if (!date) return alert("請選補打卡日期");
       if (!actualTime) return alert("請填補打卡時間");
 
-      const shift = employeeSchedule(employee);
+      const shift = employeeSchedule(employee, date);
       const judge = judgeClock(type, actualTime, shift);
       const record = {
         id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
@@ -1344,6 +1462,19 @@
       saveState();
       if (state.settings.apiUrl) await apiCall("deleteEmployee", { id });
       renderAll();
+    }
+
+    async function deleteSchedule(id) {
+      if (!requestAdminPin()) return alert("PIN 錯誤");
+      if (!confirm("確定刪除這筆每日排班？")) return;
+      state.schedules = (state.schedules || []).filter(schedule => schedule.id !== id);
+      saveState();
+      if (state.settings.apiUrl) {
+        await apiCall("deleteSchedule", { id });
+        await syncFromSheet();
+      } else {
+        renderAll();
+      }
     }
 
     async function saveSettingsFromForm() {
@@ -1419,6 +1550,8 @@
         button.addEventListener("click", () => switchTab(button.dataset.adminTarget));
       });
       el("addEmployeeBtn").addEventListener("click", addEmployee);
+      el("saveScheduleBtn").addEventListener("click", saveSchedule);
+      el("scheduleEmployee").addEventListener("change", () => updateScheduleDefaults(true));
       el("saveSettingsBtn").addEventListener("click", saveSettingsFromForm);
       el("useCurrentLocationBtn").addEventListener("click", setCurrentLocationAsSite);
       el("exportCsvBtn").addEventListener("click", exportCsv);
@@ -1427,7 +1560,7 @@
       el("manualClockBtn").addEventListener("click", manualClock);
       el("manualEmployee").addEventListener("change", () => updateManualClockDefaults(true));
       el("manualType").addEventListener("change", () => updateManualClockDefaults(true));
-      el("filterMonth").addEventListener("change", () => { renderRecords(); renderAttendanceCalendar(); renderStats(); });
+      el("filterMonth").addEventListener("change", () => { renderRecords(); renderAttendanceCalendar(); renderStats(); renderSchedules(); });
       el("filterEmployee").addEventListener("change", () => {
         if (el("filterEmployee").value) el("manualEmployee").value = el("filterEmployee").value;
         updateManualClockDefaults(true);
@@ -1443,10 +1576,15 @@
         const button = event.target.closest("[data-delete-employee]");
         if (button) deleteEmployee(button.dataset.deleteEmployee);
       });
+      el("scheduleList").addEventListener("click", event => {
+        const button = event.target.closest("[data-delete-schedule]");
+        if (button) deleteSchedule(button.dataset.deleteSchedule);
+      });
     }
 
     async function init() {
       el("filterMonth").value = todayParts().month;
+      el("scheduleDate").value = todayParts().date;
       bindEvents();
       updateClock();
       setInterval(updateClock, 1000);
