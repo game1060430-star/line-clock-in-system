@@ -812,10 +812,26 @@
 
     function normalizeRecord(record) {
       const normalized = Object.assign({}, record);
+      normalized.date = toDateText(normalized.date);
       ["inActual", "inCounted", "outActual", "outCounted"].forEach(key => {
         normalized[key] = toTime(normalized[key], "");
       });
       return normalized;
+    }
+
+    function toDateText(value) {
+      if (value === undefined || value === null || value === "") return "";
+      if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+      }
+      const text = String(value);
+      const ymd = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`;
+      const parsed = new Date(text);
+      if (!Number.isNaN(parsed.getTime())) {
+        return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`;
+      }
+      return text;
     }
 
     function toTime(value, fallback = "") {
@@ -976,7 +992,7 @@
     }
 
     function sameDay(record, date, employeeId) {
-      return record.date === date && record.employeeId === employeeId;
+      return toDateText(record.date) === date && record.employeeId === employeeId;
     }
 
     function recordFor(employeeId, date) {
@@ -1151,7 +1167,11 @@
       if (!employee) return alert("找不到員工資料，請先請管理者新增員工。");
       if (currentProfile.userId && !employeeIsBound()) return alert("請先綁定你的 LINE 身分。");
       const today = todayParts().date;
-      const existing = recordFor(employee.id, today);
+      let existing = recordFor(employee.id, today);
+      if (type === "out" && !existing?.inActual && state.settings.apiUrl) {
+        await syncFromSheet();
+        existing = recordFor(employee.id, today);
+      }
       if (type === "in" && existing?.inActual && !existing?.outActual) return alert("你已經上班打卡了，現在應該點下班打卡。");
       if (type === "in" && existing?.inActual && existing?.outActual) return alert("今天已完成上下班打卡。");
       if (type === "out" && !existing?.inActual) return alert("目前沒有上班打卡紀錄，請送出補上班卡申請。");
@@ -1191,6 +1211,8 @@
       try {
         if (state.settings.apiUrl) {
           await apiCall("clock", record);
+          upsertLocalRecord(record);
+          saveState();
           await syncFromSheet();
         } else {
           upsertLocalRecord(record);
