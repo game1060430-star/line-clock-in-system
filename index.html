@@ -181,6 +181,28 @@
     }
     .attendance-day.scheduled { background: #e4f7eb; border-color: #9bddb5; }
     .attendance-day.leave { background: #eef3ef; border-color: #cfd9d3; }
+    .weekday-picker {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .weekday-picker label {
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      margin: 0;
+      background: #fbfcfb;
+      color: var(--text);
+      font-size: 13px;
+    }
+    .weekday-picker input { position: absolute; opacity: 0; pointer-events: none; }
+    .weekday-picker label:has(input:checked) {
+      border-color: var(--primary);
+      background: #e4f7eb;
+      color: var(--primary-dark);
+    }
     .attendance-day b { font-size: 14px; line-height: 1; }
     .attendance-day span { font-size: 10px; color: var(--muted); line-height: 1.2; }
     .attendance-day.ok { background: #e4f7eb; border-color: #9bddb5; color: var(--primary-dark); }
@@ -374,6 +396,7 @@
       .attendance-day b { font-size: 13px; }
       .attendance-day span { font-size: 9px; }
       .attendance-day span:last-child { display: none; }
+      .weekday-picker { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .table-wrap { overflow-x: visible; }
       table { min-width: 0; border-collapse: separate; border-spacing: 0 8px; }
       thead { display: none; }
@@ -676,16 +699,16 @@
                 <select id="weeklyEmployee"></select>
               </div>
               <div>
-                <label for="weeklyDay">星期</label>
-                <select id="weeklyDay">
-                  <option value="1">週一</option>
-                  <option value="2">週二</option>
-                  <option value="3">週三</option>
-                  <option value="4">週四</option>
-                  <option value="5">週五</option>
-                  <option value="6">週六</option>
-                  <option value="0">週日</option>
-                </select>
+                <label>星期</label>
+                <div id="weeklyDays" class="weekday-picker">
+                  <label><input type="checkbox" value="1">一</label>
+                  <label><input type="checkbox" value="2">二</label>
+                  <label><input type="checkbox" value="3">三</label>
+                  <label><input type="checkbox" value="4">四</label>
+                  <label><input type="checkbox" value="5">五</label>
+                  <label><input type="checkbox" value="6">六</label>
+                  <label><input type="checkbox" value="0">日</label>
+                </div>
               </div>
               <div>
                 <label for="weeklyStart">上班時間</label>
@@ -823,7 +846,7 @@
           <div class="stat-grid">
             <div class="stat"><span>天數</span><b id="monthDays">0</b></div>
             <div class="stat"><span>工時</span><b id="monthHours">0</b></div>
-            <div class="stat"><span>薪資</span><b id="monthPay">0</b></div>
+            <div id="monthPayStat" class="stat"><span>薪資</span><b id="monthPay">0</b></div>
           </div>
         </div>
         <div class="panel">
@@ -1282,6 +1305,8 @@
       const matched = currentProfile.userId
         ? state.employees.find(item => item.lineUserId === currentProfile.userId)
         : null;
+      if (el("employeeSelect")) el("employeeSelect").disabled = Boolean(matched);
+      if (el("requestEmployee")) el("requestEmployee").disabled = Boolean(matched);
       const lineText = currentProfile.userId
         ? (matched ? "已用 LINE 自動綁定" : "這個 LINE 尚未綁定員工")
         : "目前不是 LIFF 模式，請先手動選員工測試";
@@ -1502,6 +1527,7 @@
       el("monthDays").textContent = new Set(monthRecords.map(record => `${record.employeeId}-${record.date}`)).size;
       el("monthHours").textContent = totalHours.toFixed(1);
       el("monthPay").textContent = Math.round(totalPay).toLocaleString();
+      if (el("monthPayStat")) el("monthPayStat").classList.toggle("hidden", !adminUnlocked);
 
       const recent = [...visibleRecords].sort((a, b) => String(b.iso || b.date).localeCompare(String(a.iso || a.date))).slice(0, 6);
       el("recentRecords").innerHTML = recent.length ? recent.map(record => {
@@ -1645,7 +1671,13 @@
       }));
       saveState();
       const updated = state.employees.find(item => item.id === employee.id);
-      if (state.settings.apiUrl) await apiCall("saveEmployee", updated);
+      if (state.settings.apiUrl) {
+        if (usedBy) {
+          const cleared = state.employees.find(item => item.id === usedBy.id);
+          if (cleared) await apiCall("saveEmployee", cleared);
+        }
+        await apiCall("saveEmployee", updated);
+      }
       renderAll();
       alert(`已綁定 ${updated.name}`);
     }
@@ -1711,31 +1743,34 @@
     async function saveWeeklySchedule() {
       if (!requestAdminPin()) return alert("PIN 錯誤");
       const employeeId = el("weeklyEmployee").value;
-      const weekday = Number(el("weeklyDay").value);
+      const weekdays = Array.from(document.querySelectorAll("#weeklyDays input:checked")).map(input => Number(input.value));
       if (!employeeId) return alert("請先選員工");
-      const existing = (state.weeklySchedules || []).find(schedule => schedule.employeeId === employeeId && Number(schedule.weekday) === weekday && String(schedule.active) !== "false");
-      const schedule = {
-        id: existing?.id || `weekly-${Date.now()}`,
-        employeeId,
-        weekday,
-        start: el("weeklyStart").value || "06:30",
-        end: el("weeklyEnd").value || "13:30",
-        inGrace: Number(el("weeklyInGrace").value) || 0,
-        outGrace: Number(el("weeklyOutGrace").value) || 0,
-        breakMinutes: Number(el("weeklyBreak").value) || 0,
-        note: el("weeklyNote").value.trim(),
-        active: true
-      };
-      state.weeklySchedules = (state.weeklySchedules || []).filter(item => item.id !== schedule.id);
-      state.weeklySchedules.push(schedule);
+      if (weekdays.length === 0) return alert("請至少選一個星期");
+      const schedules = weekdays.map((weekday, index) => {
+        const existing = (state.weeklySchedules || []).find(schedule => schedule.employeeId === employeeId && Number(schedule.weekday) === weekday && String(schedule.active) !== "false");
+        return {
+          id: existing?.id || `weekly-${Date.now()}-${index}`,
+          employeeId,
+          weekday,
+          start: el("weeklyStart").value || "06:30",
+          end: el("weeklyEnd").value || "13:30",
+          inGrace: Number(el("weeklyInGrace").value) || 0,
+          outGrace: Number(el("weeklyOutGrace").value) || 0,
+          breakMinutes: Number(el("weeklyBreak").value) || 0,
+          note: el("weeklyNote").value.trim(),
+          active: true
+        };
+      });
+      state.weeklySchedules = (state.weeklySchedules || []).filter(item => !schedules.some(schedule => schedule.id === item.id));
+      state.weeklySchedules.push(...schedules);
       saveState();
       if (state.settings.apiUrl) {
-        await apiCall("saveWeeklySchedule", schedule);
+        for (const schedule of schedules) await apiCall("saveWeeklySchedule", schedule);
         await syncFromSheet();
       } else {
         renderAll();
       }
-      alert("每週固定班已儲存");
+      alert(`已儲存 ${schedules.length} 個星期固定班`);
     }
 
     async function submitScheduleRequest() {
