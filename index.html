@@ -997,6 +997,7 @@
       const shift = employeeSchedule(employee, date);
       if (shift.type === "leave") return { level: "off", label: "請假", detail: shift.note || "" };
       if (!shift.start || !shift.end) return { level: "off", label: "休", detail: "" };
+      if (date > todayParts().date && !record) return { level: "off", label: "未來", detail: "" };
       if (!record) return { level: "bad", label: "異常", detail: "未打卡" };
       if (record.inActual && !record.outActual) return { level: "warn", label: "上班中", detail: record.inActual };
       const abnormal = [record.inStatus, record.outStatus].some(status => status && status !== "正常" && status !== "早到" && status !== "加班");
