@@ -881,6 +881,10 @@
       try {
         await liff.init({ liffId: state.settings.liffId });
         if (!liff.isLoggedIn()) {
+          if (!liff.isInClient()) {
+            setProfileStatus("瀏覽器模式");
+            return;
+          }
           liff.login();
           return;
         }
