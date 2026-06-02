@@ -1011,8 +1011,10 @@
       }).join("") : `<tr><td colspan="9" class="empty">查無紀錄</td></tr>`;
     }
 
-    function getAttendanceStatus(record) {
-      if (!record) return { className: "empty", label: "無" };
+    function getAttendanceStatus(record, date) {
+      const today = todayParts().date;
+      if (!record && date > today) return { className: "empty", label: "未到" };
+      if (!record) return { className: "bad", label: "異常" };
       const hasIn = Boolean(record.inActual);
       const hasOut = Boolean(record.outActual);
       const statuses = [record.inStatus, record.outStatus, record.locationStatus].filter(Boolean);
@@ -1046,10 +1048,10 @@
       for (let day = 1; day <= daysInMonth; day++) {
         const date = `${month}-${String(day).padStart(2, "0")}`;
         const record = recordsByDate.get(date);
-        const status = getAttendanceStatus(record);
+        const status = getAttendanceStatus(record, date);
         const detail = record
           ? `${record.inActual || "--"} / ${record.outActual || "--"}`
-          : "未打卡";
+          : (date > todayParts().date ? "" : "未打卡");
         cells.push(`
           <div class="attendance-day ${status.className}" title="${escapeHtml(date)} ${escapeHtml(detail)}">
             <b>${day}</b>
