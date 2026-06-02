@@ -1059,8 +1059,9 @@
       if (date > todayParts().date && !record) return { level: "off", label: "未來", detail: "" };
       if (!record) return { level: "bad", label: "異常", detail: "未打卡" };
       if (record.inActual && !record.outActual) return { level: "warn", label: "上班中", detail: record.inActual };
+      const locationAbnormal = record.locationStatus && !["範圍內", "管理補卡"].includes(record.locationStatus);
       const abnormal = [record.inStatus, record.outStatus].some(status => status && status !== "正常" && status !== "早到" && status !== "加班");
-      if (!record.inActual || !record.outActual || abnormal) return { level: "bad", label: "異常", detail: `${record.inActual || "--"} / ${record.outActual || "--"}` };
+      if (!record.inActual || !record.outActual || abnormal || locationAbnormal) return { level: "bad", label: "異常", detail: `${record.inActual || "--"} / ${record.outActual || "--"}` };
       return { level: "ok", label: "正常", detail: `${record.inActual || "--"} / ${record.outActual || "--"}` };
     }
 
@@ -1180,8 +1181,10 @@
       const position = await getPosition();
       if (!position.ok) return alert(position.message);
       const distance = distanceMeters(position.latitude, position.longitude, Number(state.settings.latitude), Number(state.settings.longitude));
-      if (distance > Number(state.settings.radiusMeters || 200)) {
-        return alert(`你目前距離打卡地點約 ${Math.round(distance)} 公尺，超過允許範圍 ${state.settings.radiusMeters} 公尺。`);
+      const inRange = distance <= Number(state.settings.radiusMeters || 200);
+      if (!inRange) {
+        const ok = confirm(`你目前距離打卡地點約 ${Math.round(distance)} 公尺，超過允許範圍 ${state.settings.radiusMeters} 公尺。仍要送出異地打卡並標記異常嗎？`);
+        if (!ok) return;
       }
 
       const time = todayParts().time.slice(0, 5);
@@ -1199,10 +1202,10 @@
         shiftId: shift.id,
         shiftName: shift.name,
         clockStatus: judge.status,
-        locationStatus: "範圍內",
+        locationStatus: inRange ? "範圍內" : "範圍外",
         distance: Math.round(distance),
         locationText: `${position.latitude.toFixed(6)},${position.longitude.toFixed(6)}`,
-        note: $("noteInput").value.trim(),
+        note: [$("noteInput").value.trim(), inRange ? "" : `異地打卡，距離 ${Math.round(distance)} 公尺`].filter(Boolean).join("；"),
         iso: new Date().toISOString()
       };
       const button = $("primaryClockBtn");
