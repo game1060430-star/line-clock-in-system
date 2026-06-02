@@ -519,7 +519,19 @@
                 <select id="requestType">
                   <option value="leave">請假</option>
                   <option value="change">改上班時間</option>
+                  <option value="punch">補打卡</option>
                 </select>
+              </div>
+              <div>
+                <label for="requestPunchType">補卡類型</label>
+                <select id="requestPunchType">
+                  <option value="in">補上班</option>
+                  <option value="out">補下班</option>
+                </select>
+              </div>
+              <div>
+                <label for="requestPunchTime">補卡時間</label>
+                <input id="requestPunchTime" type="time" value="06:30">
               </div>
               <div>
                 <label for="requestStart">改班上班時間</label>
@@ -1058,6 +1070,21 @@
       );
     }
 
+    function hasCustomSchedule(employeeId) {
+      return (state.schedules || []).some(schedule => String(schedule.active) !== "false" && schedule.employeeId === employeeId) ||
+        (state.weeklySchedules || []).some(schedule => String(schedule.active) !== "false" && schedule.employeeId === employeeId);
+    }
+
+    function expectedScheduleForDate(employeeId, date) {
+      const employee = state.employees.find(item => item.id === employeeId);
+      if (!employee) return null;
+      const daily = getDailySchedule(employeeId, date);
+      if (daily) return daily;
+      const weekly = getWeeklySchedule(employeeId, date);
+      if (weekly) return weekly;
+      return hasCustomSchedule(employeeId) ? null : employeeSchedule(employee, date);
+    }
+
     function employeeSchedule(employee, date = todayParts().date) {
       const normalized = normalizeEmployee(employee || {});
       const daily = getDailySchedule(normalized.id, date);
@@ -1140,6 +1167,19 @@
       try {
         const employee = getSelectedEmployee();
         const parts = todayParts();
+        const existing = todayRecordForEmployee(employee);
+        if (type === "in" && existing?.inActual) {
+          alert("你今天已經上班打卡了，下一步請按下班打卡。");
+          return;
+        }
+        if (type === "out" && !existing?.inActual) {
+          alert("今天還沒有上班打卡。若忘記上班卡，請到申請頁送出補上班卡給管理者審核。");
+          return;
+        }
+        if (type === "out" && existing?.outActual) {
+          alert("你今天已經下班打卡了。");
+          return;
+        }
         const shift = employeeSchedule(employee, parts.date);
         const judge = judgeClock(type, parts.time, shift);
         const position = await getPosition();
@@ -1195,14 +1235,14 @@
       } finally {
         button.disabled = false;
         button.textContent = type === "in" ? "上班打卡" : "下班打卡";
+        updateClockButtons();
       }
     }
 
     function upsertLocalRecord(record) {
       const sameDay = state.records.find(item =>
         item.date === record.date &&
-        item.employeeId === record.employeeId &&
-        item.shiftId === record.shiftId
+        item.employeeId === record.employeeId
       );
       if (!sameDay) {
         state.records.push({
@@ -1280,6 +1320,30 @@
       );
     }
 
+    function todayRecordForEmployee(employee) {
+      const today = todayParts().date;
+      return state.records.find(record => record.date === today && record.employeeId === employee?.id);
+    }
+
+    function updateClockButtons() {
+      const employee = getSelectedEmployee();
+      const record = todayRecordForEmployee(employee);
+      const hasIn = Boolean(record?.inActual);
+      const hasOut = Boolean(record?.outActual);
+      el("clockInBtn").classList.toggle("hidden", hasIn);
+      el("clockOutBtn").classList.toggle("hidden", !hasIn || hasOut);
+      el("clockInBtn").disabled = hasIn;
+      el("clockOutBtn").disabled = !hasIn || hasOut;
+      if (hasIn && hasOut) {
+        el("clockInBtn").classList.remove("hidden");
+        el("clockInBtn").textContent = "今日已完成打卡";
+        el("clockInBtn").disabled = true;
+      } else {
+        el("clockInBtn").textContent = "上班打卡";
+        el("clockOutBtn").textContent = "下班打卡";
+      }
+    }
+
     function renderEmployees() {
       const employeeOptions = state.employees.map(employee => `<option value="${employee.id}">${escapeHtml(employee.name)}</option>`).join("");
       el("employeeSelect").innerHTML = employeeOptions;
@@ -1321,7 +1385,9 @@
     }
 
     function requestTypeText(type) {
-      return type === "leave" ? "請假" : "改班";
+      if (type === "leave") return "請假";
+      if (type === "punch") return "補卡";
+      return "改班";
     }
 
     function requestStatusText(status) {
@@ -1339,7 +1405,7 @@
         <div class="record">
           <div>
             <strong>${escapeHtml(item.date)} ${requestTypeText(item.type)} / ${requestStatusText(item.status)}</strong>
-            <small>${item.type === "change" ? `${escapeHtml(item.start || "--")} - ${escapeHtml(item.end || "--")} / ` : ""}${escapeHtml(item.reason || "")}</small>
+            <small>${item.type === "change" ? `${escapeHtml(item.start || "--")} - ${escapeHtml(item.end || "--")} / ` : ""}${item.type === "punch" ? `${item.punchType === "out" ? "補下班" : "補上班"} ${escapeHtml(item.punchTime || "--")} / ` : ""}${escapeHtml(item.reason || "")}</small>
           </div>
           <span class="badge ${item.status === "approved" ? "ok" : item.status === "rejected" ? "bad" : "warn"}">${requestStatusText(item.status)}</span>
         </div>
@@ -1356,7 +1422,7 @@
         <div class="record">
           <div>
             <strong>${escapeHtml(item.employeeName || "員工")} ${escapeHtml(item.date)} ${requestTypeText(item.type)}</strong>
-            <small>${item.type === "change" ? `${escapeHtml(item.start || "--")} - ${escapeHtml(item.end || "--")} / ` : ""}${escapeHtml(item.reason || "")}</small>
+            <small>${item.type === "change" ? `${escapeHtml(item.start || "--")} - ${escapeHtml(item.end || "--")} / ` : ""}${item.type === "punch" ? `${item.punchType === "out" ? "補下班" : "補上班"} ${escapeHtml(item.punchTime || "--")} / ` : ""}${escapeHtml(item.reason || "")}</small>
           </div>
           <div class="actions">
             <button class="btn primary" type="button" data-approve-request="${item.id}">核准</button>
@@ -1459,9 +1525,11 @@
     function getAttendanceStatus(record, date) {
       const today = todayParts().date;
       if (!record && date > today) return { className: "empty", label: "未到" };
-      if (!record) return { className: "bad", label: "異常" };
       const employeeId = el("filterEmployee")?.value;
-      if (!record && employeeId && getDailySchedule(employeeId, date)?.type === "leave") return { className: "ok", label: "請假" };
+      const expected = employeeId ? expectedScheduleForDate(employeeId, date) : null;
+      if (!record && expected?.type === "leave") return { className: "ok", label: "請假" };
+      if (!record && !expected) return { className: "empty", label: "休" };
+      if (!record) return { className: "bad", label: "異常" };
       const hasIn = Boolean(record.inActual);
       const hasOut = Boolean(record.outActual);
       const statuses = [record.inStatus, record.outStatus, record.locationStatus].filter(Boolean);
@@ -1582,6 +1650,7 @@
       recalcLocalRecords();
       renderEmployees();
       renderEmployeeIdentity();
+      updateClockButtons();
       renderWeeklySchedules();
       renderSchedules();
       renderScheduleCalendar();
@@ -1781,6 +1850,7 @@
       const type = el("requestType").value;
       if (!date) return alert("請選申請日期");
       if (type === "change" && (!el("requestStart").value || !el("requestEnd").value)) return alert("請填改班上下班時間");
+      if (type === "punch" && !el("requestPunchTime").value) return alert("請填補卡時間");
       const request = {
         id: `request-${Date.now()}`,
         date,
@@ -1790,6 +1860,8 @@
         type,
         start: type === "change" ? el("requestStart").value : "",
         end: type === "change" ? el("requestEnd").value : "",
+        punchType: type === "punch" ? el("requestPunchType").value : "",
+        punchTime: type === "punch" ? el("requestPunchTime").value : "",
         reason: el("requestReason").value.trim(),
         status: "pending",
         createdAt: new Date().toISOString(),
@@ -1831,9 +1903,32 @@
       request.status = status;
       request.reviewedAt = new Date().toISOString();
       if (status === "approved") {
-        const schedule = scheduleFromRequest(request);
-        state.schedules = (state.schedules || []).filter(item => !(item.employeeId === schedule.employeeId && item.date === schedule.date));
-        state.schedules.push(schedule);
+        if (request.type === "punch") {
+          const employee = state.employees.find(item => item.id === request.employeeId);
+          const shift = employeeSchedule(employee, request.date);
+          const judge = judgeClock(request.punchType || "in", request.punchTime, shift);
+          upsertLocalRecord({
+            id: `approved-${request.id}`,
+            date: request.date,
+            employeeId: request.employeeId,
+            employeeName: request.employeeName,
+            lineUserId: request.lineUserId || "",
+            type: request.punchType || "in",
+            actualTime: request.punchTime,
+            countedTime: judge.countedTime,
+            shiftId: shift.id,
+            shiftName: shift.name,
+            clockStatus: judge.status,
+            locationStatus: "範圍內",
+            distance: "",
+            note: `補卡核准：${request.reason || ""}`,
+            iso: new Date(`${request.date}T${request.punchTime}:00`).toISOString()
+          });
+        } else {
+          const schedule = scheduleFromRequest(request);
+          state.schedules = (state.schedules || []).filter(item => !(item.employeeId === schedule.employeeId && item.date === schedule.date));
+          state.schedules.push(schedule);
+        }
       }
       saveState();
       if (state.settings.apiUrl) {

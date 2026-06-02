@@ -16,7 +16,7 @@ const HEADERS = {
   [SHEETS.EMPLOYEES]: ['id', 'name', 'hourlyRate', 'workStart', 'workEnd', 'inGrace', 'outGrace', 'breakMinutes', 'lineUserId', 'active'],
   [SHEETS.WEEKLY_SCHEDULES]: ['id', 'employeeId', 'weekday', 'start', 'end', 'inGrace', 'outGrace', 'breakMinutes', 'note', 'active'],
   [SHEETS.SCHEDULES]: ['id', 'date', 'employeeId', 'type', 'start', 'end', 'inGrace', 'outGrace', 'breakMinutes', 'note', 'active'],
-  [SHEETS.REQUESTS]: ['id', 'date', 'employeeId', 'employeeName', 'lineUserId', 'type', 'start', 'end', 'reason', 'status', 'adminNote', 'createdAt', 'reviewedAt', 'active'],
+  [SHEETS.REQUESTS]: ['id', 'date', 'employeeId', 'employeeName', 'lineUserId', 'type', 'start', 'end', 'punchType', 'punchTime', 'reason', 'status', 'adminNote', 'createdAt', 'reviewedAt', 'active'],
   [SHEETS.SHIFTS]: ['id', 'name', 'start', 'end', 'inGrace', 'outGrace', 'breakMinutes', 'active'],
   [SHEETS.RAW]: ['id', 'date', 'employeeId', 'employeeName', 'lineUserId', 'type', 'actualTime', 'countedTime', 'shiftId', 'shiftName', 'clockStatus', 'locationStatus', 'distance', 'locationText', 'note', 'createdAt'],
   [SHEETS.DAILY]: ['dailyKey', 'date', 'employeeId', 'employeeName', 'lineUserId', 'shiftId', 'shiftName', 'inActual', 'inCounted', 'inStatus', 'outActual', 'outCounted', 'outStatus', 'locationStatus', 'distance', 'note', 'hours', 'pay', 'updatedAt']
@@ -135,7 +135,7 @@ function saveClock(record) {
 }
 
 function upsertDaily(record, employee, shift, now) {
-  const dailyKey = [record.date, record.employeeId, record.shiftId].join('|');
+  const dailyKey = [record.date, record.employeeId].join('|');
   const sheet = getSpreadsheet().getSheetByName(SHEETS.DAILY);
   const headers = HEADERS[SHEETS.DAILY];
   const rows = sheet.getDataRange().getValues();
@@ -146,8 +146,8 @@ function upsertDaily(record, employee, shift, now) {
     employeeId: record.employeeId,
     employeeName: record.employeeName,
     lineUserId: record.lineUserId,
-    shiftId: record.shiftId,
-    shiftName: record.shiftName,
+    shiftId: shift.id || record.shiftId,
+    shiftName: shift.name || record.shiftName,
     inActual: '',
     inCounted: '',
     inStatus: '',
@@ -172,7 +172,8 @@ function upsertDaily(record, employee, shift, now) {
 
   daily.employeeName = record.employeeName || daily.employeeName;
   daily.lineUserId = record.lineUserId || daily.lineUserId;
-  daily.shiftName = record.shiftName || daily.shiftName;
+  daily.shiftId = shift.id || daily.shiftId || record.shiftId;
+  daily.shiftName = shift.name || daily.shiftName || record.shiftName;
   if (record.type === 'in') {
     daily.inActual = record.actualTime;
     daily.inCounted = record.countedTime;
@@ -245,6 +246,30 @@ function weekdayOf(dateText) {
 function minutesOfDay(timeText) {
   const parts = String(timeText || '00:00').split(':').map(Number);
   return (parts[0] || 0) * 60 + (parts[1] || 0);
+}
+
+function timeFromMinutes(minutes) {
+  const normalized = ((minutes % 1440) + 1440) % 1440;
+  const h = String(Math.floor(normalized / 60)).padStart(2, '0');
+  const m = String(normalized % 60).padStart(2, '0');
+  return h + ':' + m;
+}
+
+function judgeClock(type, actualTime, shift) {
+  const actual = minutesOfDay(actualTime);
+  const scheduled = minutesOfDay(type === 'in' ? shift.start : shift.end);
+  const grace = Number(type === 'in' ? shift.inGrace : shift.outGrace) || 0;
+  if (actual >= scheduled - grace && actual <= scheduled + grace) {
+    return { status: '準時', countedTime: timeFromMinutes(scheduled) };
+  }
+  if (type === 'in') {
+    return actual > scheduled + grace
+      ? { status: '遲到', countedTime: timeFromMinutes(actual) }
+      : { status: '提早', countedTime: timeFromMinutes(scheduled) };
+  }
+  return actual < scheduled - grace
+    ? { status: '早退', countedTime: timeFromMinutes(actual) }
+    : { status: '延後', countedTime: timeFromMinutes(actual) };
 }
 
 function saveSettings(settings) {
@@ -328,6 +353,8 @@ function saveRequest(request) {
     type: request.type || 'leave',
     start: request.start || '',
     end: request.end || '',
+    punchType: request.punchType || '',
+    punchTime: request.punchTime || '',
     reason: request.reason || '',
     status: request.status || 'pending',
     adminNote: request.adminNote || '',
@@ -353,19 +380,42 @@ function reviewRequest(payload) {
   if (status === 'approved') {
     const employees = rowsAsObjects(SHEETS.EMPLOYEES);
     const employee = employees.find(item => item.id === request.employeeId) || {};
-    saveSchedule({
-      id: 'approved-' + request.id,
-      date: request.date,
-      employeeId: request.employeeId,
-      type: request.type === 'leave' ? 'leave' : 'work',
-      start: request.type === 'leave' ? '' : (request.start || employee.workStart || '06:30'),
-      end: request.type === 'leave' ? '' : (request.end || employee.workEnd || '14:30'),
-      inGrace: employee.inGrace || 15,
-      outGrace: employee.outGrace || 15,
-      breakMinutes: employee.breakMinutes || 0,
-      note: (request.type === 'leave' ? '請假：' : '改班：') + (request.reason || ''),
-      active: true
-    });
+    if (request.type === 'punch') {
+      const shift = employeeSchedule(employee, request);
+      const punchType = request.punchType || 'in';
+      const judge = judgeClock(punchType, request.punchTime, shift);
+      saveClock({
+        id: 'approved-' + request.id,
+        date: request.date,
+        employeeId: request.employeeId,
+        employeeName: request.employeeName || employee.name,
+        lineUserId: request.lineUserId || employee.lineUserId || '',
+        type: punchType,
+        actualTime: request.punchTime,
+        countedTime: judge.countedTime,
+        shiftId: shift.id,
+        shiftName: shift.name,
+        clockStatus: judge.status,
+        locationStatus: '範圍內',
+        distance: '',
+        locationText: '補卡審核',
+        note: '補卡核准：' + (request.reason || '')
+      });
+    } else {
+      saveSchedule({
+        id: 'approved-' + request.id,
+        date: request.date,
+        employeeId: request.employeeId,
+        type: request.type === 'leave' ? 'leave' : 'work',
+        start: request.type === 'leave' ? '' : (request.start || employee.workStart || '06:30'),
+        end: request.type === 'leave' ? '' : (request.end || employee.workEnd || '14:30'),
+        inGrace: employee.inGrace || 15,
+        outGrace: employee.outGrace || 15,
+        breakMinutes: employee.breakMinutes || 0,
+        note: (request.type === 'leave' ? '請假：' : '改班：') + (request.reason || ''),
+        active: true
+      });
+    }
   }
   return request;
 }
