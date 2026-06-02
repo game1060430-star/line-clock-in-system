@@ -1713,6 +1713,26 @@
       el(`tab-${tabName}`).classList.remove("hidden");
     }
 
+    function handleLaunchAction() {
+      const action = new URLSearchParams(location.search).get("action");
+      if (!action) return;
+      const actionKey = `${action}:${todayParts().date}`;
+      if (sessionStorage.getItem("lineClockLaunchAction") === actionKey) return;
+      sessionStorage.setItem("lineClockLaunchAction", actionKey);
+      if (action === "request") {
+        switchTab("request");
+        return;
+      }
+      if (action === "clock-in") {
+        switchTab("clock");
+        setTimeout(() => clock("in"), 500);
+      }
+      if (action === "clock-out") {
+        switchTab("clock");
+        setTimeout(() => clock("out"), 500);
+      }
+    }
+
     function requestAdminPin() {
       const entered = prompt("請輸入管理 PIN");
       return entered === (state.settings.adminPin || "1234");
@@ -2207,6 +2227,7 @@
       renderAll();
       await initLineProfile();
       await syncFromSheet();
+      handleLaunchAction();
     }
 
     init();
