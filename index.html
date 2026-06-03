@@ -536,8 +536,16 @@
                 <input id="logMonthInput" type="month">
               </div>
               <div>
+                <label for="logDateInput">日期</label>
+                <input id="logDateInput" type="date">
+              </div>
+              <div>
                 <label>&nbsp;</label>
                 <button id="refreshAdminBtn" class="btn blue" type="button">重新同步</button>
+              </div>
+              <div>
+                <label>&nbsp;</label>
+                <button id="clearLogDateBtn" class="btn ghost" type="button">看整月</button>
               </div>
             </div>
             <div class="grid-3" style="margin-bottom:10px;">
@@ -1128,7 +1136,8 @@
 
     function renderLogTable() {
       const month = $("logMonthInput").value || nowParts().month;
-      const rows = logs.filter(log => log.date.startsWith(month)).sort((a, b) => `${b.date}${b.actualTime}`.localeCompare(`${a.date}${a.actualTime}`));
+      const date = $("logDateInput").value;
+      const rows = logs.filter(log => date ? log.date === date : log.date.startsWith(month)).sort((a, b) => `${b.date}${b.actualTime}`.localeCompare(`${a.date}${a.actualTime}`));
       $("adminEmployeeCount").textContent = employees.length;
       $("adminLogCount").textContent = rows.length;
       $("adminPendingCount").textContent = requests.filter(request => request.status === "待審核").length;
@@ -1145,7 +1154,7 @@
             <button class="btn ${log.status === "取消" ? "primary" : "red"}" type="button" data-log-status="${escapeHtml(log.logId)}" data-status="${log.status === "取消" ? "active" : "cancelled"}">${log.status === "取消" ? "恢復納入" : "取消納入"}</button>
           </td>
         </tr>
-      `).join("") : `<tr><td colspan="8"><div class="empty">這個月沒有打卡紀錄。</div></td></tr>`;
+      `).join("") : `<tr><td colspan="8"><div class="empty">${date ? "這一天" : "這個月"}沒有打卡紀錄。</div></td></tr>`;
     }
 
     function renderAll() {
@@ -1215,7 +1224,15 @@
       $("saveEmployeeBtn").addEventListener("click", saveEmployee);
       $("manualClockBtn").addEventListener("click", manualClock);
       $("refreshAdminBtn").addEventListener("click", syncFromSheet);
-      $("logMonthInput").addEventListener("change", renderLogTable);
+      $("logMonthInput").addEventListener("change", () => {
+        $("logDateInput").value = "";
+        renderLogTable();
+      });
+      $("logDateInput").addEventListener("change", renderLogTable);
+      $("clearLogDateBtn").addEventListener("click", () => {
+        $("logDateInput").value = "";
+        renderLogTable();
+      });
       $("employeeList").addEventListener("click", event => {
         const button = event.target.closest("[data-delete-employee]");
         if (button) deleteEmployee(button.dataset.deleteEmployee);
@@ -1235,6 +1252,7 @@
     async function init() {
       $("requestDate").value = nowParts().date;
       $("logMonthInput").value = nowParts().month;
+      $("logDateInput").value = "";
       $("manualDate").value = nowParts().date;
       bindEvents();
       updateClock();
