@@ -733,8 +733,8 @@
           $("confirmPunchBtn").disabled = false;
         } else {
           $("gpsStatus").className = "hint bad";
-          $("gpsStatus").textContent = `超出打卡範圍，距離約 ${Math.round(currentDistance)} 公尺，允許範圍 ${settings.radiusMeters} 公尺。`;
-          $("confirmPunchBtn").disabled = true;
+          $("gpsStatus").textContent = `超出打卡範圍，距離約 ${Math.round(currentDistance)} 公尺，允許範圍 ${settings.radiusMeters} 公尺。仍可送出，但會標記範圍外。`;
+          $("confirmPunchBtn").disabled = false;
         }
       }, error => {
         $("gpsStatus").className = "hint bad";
@@ -753,7 +753,7 @@
     }
 
     async function confirmPunch() {
-      if (!gpsInRange || !currentPosition) return alert("尚未進入打卡範圍。");
+      if (!currentPosition) return alert("尚未取得 GPS 定位。");
       const employee = selectedEmployee();
       const actualTime = nowParts().time.slice(0, 5);
       const payload = {
@@ -766,8 +766,8 @@
         latitude: currentPosition.latitude,
         longitude: currentPosition.longitude,
         distance: Math.round(currentDistance),
-        locationStatus: "範圍內",
-        note: $("punchNote").value.trim()
+        locationStatus: gpsInRange ? "範圍內" : "範圍外",
+        note: [$("punchNote").value.trim(), gpsInRange ? "" : `範圍外打卡，距離 ${Math.round(currentDistance)} 公尺`].filter(Boolean).join("；")
       };
       $("confirmPunchBtn").disabled = true;
       $("confirmPunchBtn").textContent = "寫入中...";
@@ -780,7 +780,7 @@
         alert(`打卡失敗：${error.message}`);
       } finally {
         $("confirmPunchBtn").textContent = "確認打卡";
-        if (gpsInRange) $("confirmPunchBtn").disabled = false;
+        if (currentPosition) $("confirmPunchBtn").disabled = false;
       }
     }
 
