@@ -784,14 +784,61 @@
       };
     }
 
+    function activeLogsFor(lineUserId, dateOrMonth) {
+      return logs.filter(log =>
+        log.lineUserId === lineUserId &&
+        log.status !== "取消" &&
+        String(log.date || "").startsWith(dateOrMonth)
+      );
+    }
+
+    function hasActiveClock(lineUserId, date, type) {
+      return activeLogsFor(lineUserId, date).some(log => log.type === type);
+    }
+
+    function minutesFromTime(timeText) {
+      const match = String(timeText || "").match(/^(\d{1,2}):(\d{2})/);
+      if (!match) return 0;
+      return Number(match[1]) * 60 + Number(match[2]);
+    }
+
+    function calculateLocalSummary(lineUserId, month) {
+      const byDate = {};
+      activeLogsFor(lineUserId, month).forEach(log => {
+        if (!byDate[log.date]) byDate[log.date] = [];
+        byDate[log.date].push(log);
+      });
+      let totalHours = 0;
+      Object.values(byDate).forEach(dayLogs => {
+        const records = dayLogs
+          .map(log => ({ type: log.type, minutes: minutesFromTime(log.roundedTime || log.actualTime) }))
+          .filter(log => log.type === "上班" || log.type === "下班")
+          .sort((a, b) => a.minutes - b.minutes);
+        let openStart = null;
+        let dayMinutes = 0;
+        records.forEach(record => {
+          if (record.type === "上班") {
+            openStart = record.minutes;
+            return;
+          }
+          if (record.type === "下班" && openStart !== null && record.minutes > openStart) {
+            dayMinutes += record.minutes - openStart;
+            openStart = null;
+          }
+        });
+        totalHours += dayMinutes / 60;
+      });
+      return { month, totalHours: Math.round(totalHours * 10) / 10 };
+    }
+
     function upsertLocalClock(payload) {
       const log = normalizeLog(payload);
       if (log.logId) logs = logs.filter(item => item.logId !== log.logId);
       logs.unshift(log);
-      if (payload.monthlySummary) {
-        summaries = summaries.filter(item => !(item.lineUserId === log.lineUserId && item.month === payload.monthlySummary.month));
-        summaries.push(Object.assign({ lineUserId: log.lineUserId, month: payload.monthlySummary.month }, payload.monthlySummary));
-      }
+      const month = String(log.date || "").slice(0, 7);
+      const monthlySummary = calculateLocalSummary(log.lineUserId, month);
+      summaries = summaries.filter(item => !(item.lineUserId === log.lineUserId && item.month === month));
+      summaries.push(Object.assign({ lineUserId: log.lineUserId, month }, monthlySummary));
       saveCachedData();
       renderAll();
     }
@@ -951,22 +998,25 @@
     async function confirmPunch() {
       if (punchSubmitting) return;
       if (!currentPosition) return alert("尚未取得 GPS 定位。");
+      const employee = selectedEmployee();
+      const actualTime = nowParts().time.slice(0, 5);
+      const date = nowParts().date;
+      const missingClockIn = punchType === "下班" && !hasActiveClock(employee.lineUserId, date, "上班");
+      if (missingClockIn && !confirm("今天尚未有上班打卡紀錄。仍要送出下班卡嗎？送出後請記得申請補上班卡，工時才會計算。")) return;
       punchSubmitting = true;
       $("confirmPunchBtn").disabled = true;
       $("confirmPunchBtn").textContent = "送出中...";
       showStatusModal("正在送出打卡", "已收到你的點擊，正在寫入 Google Sheet。", "loading");
       await nextPaint();
-      const employee = selectedEmployee();
       const matched = currentProfile.userId && employees.some(item => item.lineUserId === currentProfile.userId);
       if (currentProfile.userId && !matched) {
         await apiCall("saveEmployee", { lineUserId: currentProfile.userId, name: employee.name, status: "啟用" });
       }
-      const actualTime = nowParts().time.slice(0, 5);
       const payload = {
         lineUserId: employee.lineUserId,
         employeeName: employee.name,
         displayName: currentProfile.displayName,
-        date: nowParts().date,
+        date,
         type: punchType,
         actualTime,
         latitude: currentPosition.latitude,
@@ -979,9 +1029,13 @@
       try {
         const result = await apiCall("clock", payload);
         upsertLocalClock(result);
-        showStatusModal("打卡完成", `${punchType}打卡完成，實際 ${actualTime}，系統歸入 ${roundToNearestHalfHour(actualTime)}。`, "success");
+        if (missingClockIn) {
+          showStatusModal("下班打卡已送出", `今天沒有上班卡，請到工時查詢申請補上班卡。這一天會等補卡核准後才計算工時。`, "error");
+        } else {
+          showStatusModal("打卡完成", `${punchType}打卡完成，實際 ${actualTime}，系統歸入 ${roundToNearestHalfHour(actualTime)}。`, "success");
+        }
         syncFromSheet();
-        if (window.liff && liff.isInClient()) {
+        if (!missingClockIn && window.liff && liff.isInClient()) {
           await delay(1200);
           liff.closeWindow();
         }
@@ -1000,7 +1054,7 @@
       $("queryIdentity").textContent = "";
       const month = nowParts().month;
       $("summaryMonth").textContent = `${month.replace("-", " 年 ")} 月累計總工時`;
-      const cached = findSummary(employee.lineUserId, month);
+      const cached = calculateLocalSummary(employee.lineUserId, month);
       $("summaryHours").textContent = `${Number(cached?.totalHours || 0).toFixed(1)} 小時`;
       if (!employee.lineUserId) return;
       try {
@@ -1008,7 +1062,7 @@
         summaries = summaries.filter(item => !(item.lineUserId === employee.lineUserId && item.month === month));
         summaries.push(Object.assign({ lineUserId: employee.lineUserId, month }, summary));
         saveCachedData();
-        $("summaryHours").textContent = `${Number(summary?.totalHours || 0).toFixed(1)} 小時`;
+        $("summaryHours").textContent = `${Number(calculateLocalSummary(employee.lineUserId, month)?.totalHours || summary?.totalHours || 0).toFixed(1)} 小時`;
       } catch (error) {
         $("queryIdentity").classList.remove("hidden");
         $("queryIdentity").textContent = `已先顯示快取資料，同步失敗：${error.message}`;

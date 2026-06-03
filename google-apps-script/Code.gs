@@ -177,17 +177,30 @@ function calculateSummary(logs, month) {
   let totalHours = 0;
   const days = [];
   Object.keys(byDate).sort().forEach(date => {
-    const records = byDate[date];
-    const ins = records.filter(row => normalizeType(row['打卡類型(上班/下班)']) === '上班').map(row => minutesOfDay(row['系統修正時間(30分單位)']));
-    const outs = records.filter(row => normalizeType(row['打卡類型(上班/下班)']) === '下班').map(row => minutesOfDay(row['系統修正時間(30分單位)']));
-    if (ins.length === 0 || outs.length === 0) {
+    const records = byDate[date]
+      .map(row => ({
+        type: normalizeType(row['打卡類型(上班/下班)']),
+        minutes: minutesOfDay(row['系統修正時間(30分單位)'])
+      }))
+      .filter(row => row.type === '上班' || row.type === '下班')
+      .sort((a, b) => a.minutes - b.minutes);
+    let openStart = null;
+    let dayMinutes = 0;
+    records.forEach(record => {
+      if (record.type === '上班') {
+        openStart = record.minutes;
+        return;
+      }
+      if (record.type === '下班' && openStart !== null && record.minutes > openStart) {
+        dayMinutes += record.minutes - openStart;
+        openStart = null;
+      }
+    });
+    if (dayMinutes <= 0) {
       days.push({ date: date, hours: 0, status: '缺卡' });
       return;
     }
-    const start = Math.min.apply(null, ins);
-    let end = Math.max.apply(null, outs);
-    if (end < start) end += 1440;
-    const hours = Math.round(((end - start) / 60) * 10) / 10;
+    const hours = Math.round((dayMinutes / 60) * 10) / 10;
     totalHours += hours;
     days.push({ date: date, hours: hours, status: '完成' });
   });
