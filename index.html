@@ -883,7 +883,7 @@
     }
 
     function canConfirmQuickPunch() {
-      return Boolean(currentPosition && (!quickPunchRequested || currentLineEmployee()) && !punchSubmitting);
+      return Boolean(currentPosition && (!quickPunchRequested || currentProfile.userId) && !punchSubmitting);
     }
 
     function minutesFromTime(timeText) {
@@ -1148,7 +1148,9 @@
     async function confirmPunch() {
       if (punchSubmitting) return;
       if (!currentPosition) return alert("尚未取得 GPS 定位。");
-      const employee = quickPunchRequested ? currentLineEmployee() : selectedEmployee();
+      const employee = quickPunchRequested
+        ? (currentLineEmployee() || { lineUserId: currentProfile.userId, name: currentProfile.displayName || "未命名員工", status: "啟用" })
+        : selectedEmployee();
       if (!employee) return alert("尚未確認員工身分，請稍候再試。");
       const actualTime = nowParts().time.slice(0, 5);
       const date = nowParts().date;
@@ -1528,7 +1530,7 @@
       $("logTable").innerHTML = rows.length ? rows.map(log => `
         <tr>
           <td>${escapeHtml(log.date)}</td>
-          <td>${escapeHtml(log.name)}</td>
+          <td>${escapeHtml(log.name)}<br><small>${escapeHtml(log.lineUserId || "未綁定")}</small></td>
           <td>${escapeHtml(log.type)}</td>
           <td><input type="time" value="${escapeHtml(log.actualTime)}" data-log-time="${escapeHtml(log.logId)}"></td>
           <td>${escapeHtml(log.roundedTime)}</td>
