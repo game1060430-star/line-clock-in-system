@@ -490,6 +490,21 @@
           </div>
 
           <div class="panel">
+            <h3>員工工時</h3>
+            <div class="grid" style="margin-bottom:10px;">
+              <div>
+                <label for="adminHoursMonthInput">月份</label>
+                <input id="adminHoursMonthInput" type="month">
+              </div>
+              <div>
+                <label>&nbsp;</label>
+                <button id="refreshAdminHoursBtn" class="btn blue" type="button">重新計算</button>
+              </div>
+            </div>
+            <div id="adminHoursList" class="list"></div>
+          </div>
+
+          <div class="panel">
             <h3>系統設定</h3>
             <div class="grid">
               <div>
@@ -904,6 +919,41 @@
         totalHours += dayMinutes / 60;
       });
       return { month, totalHours: Math.round(totalHours * 10) / 10 };
+    }
+
+    function calculateEmployeeMonthSummary(employee, month) {
+      const byDate = {};
+      logs.filter(log =>
+        log.status !== "取消" &&
+        String(log.date || "").startsWith(month) &&
+        ((employee.lineUserId && log.lineUserId === employee.lineUserId) || (!employee.lineUserId && log.name === employee.name))
+      ).forEach(log => {
+        if (!byDate[log.date]) byDate[log.date] = [];
+        byDate[log.date].push(log);
+      });
+      let totalMinutes = 0;
+      let workDays = 0;
+      Object.values(byDate).forEach(dayLogs => {
+        const records = dayLogs
+          .map(log => ({ type: log.type, minutes: minutesFromTime(log.roundedTime || log.actualTime) }))
+          .filter(log => log.type === "上班" || log.type === "下班")
+          .sort((a, b) => a.minutes - b.minutes);
+        let openStart = null;
+        let dayMinutes = 0;
+        records.forEach(record => {
+          if (record.type === "上班") {
+            openStart = record.minutes;
+            return;
+          }
+          if (record.type === "下班" && openStart !== null && record.minutes > openStart) {
+            dayMinutes += record.minutes - openStart;
+            openStart = null;
+          }
+        });
+        if (dayMinutes > 0) workDays += 1;
+        totalMinutes += dayMinutes;
+      });
+      return { totalHours: Math.round((totalMinutes / 60) * 10) / 10, workDays };
     }
 
     function upsertLocalClock(payload) {
@@ -1360,6 +1410,7 @@
     function renderAdmin() {
       renderSettings();
       renderTodayDashboard();
+      renderAdminHoursList();
       renderEmployeeList();
       renderManualEmployeeSelect();
       renderRequestReviewList();
@@ -1445,6 +1496,26 @@
           <span class="badge ${row.badge}">${row.label}</span>
         </div>
       `).join("") : `<div class="empty">尚未建立員工。</div>`;
+    }
+
+    function renderAdminHoursList() {
+      const month = $("adminHoursMonthInput").value || nowParts().month;
+      const activeEmployees = employees.filter(employee => employee.status !== "停用");
+      $("adminHoursList").innerHTML = activeEmployees.length ? activeEmployees.map(employee => {
+        const summary = calculateEmployeeMonthSummary(employee, month);
+        return `
+          <div class="row">
+            <div>
+              <strong>${escapeHtml(employee.name || "未命名員工")}</strong><br>
+              <small>${escapeHtml(month)}｜出勤 ${summary.workDays} 天</small>
+            </div>
+            <div class="stat" style="min-width:120px;">
+              <span>總工時</span>
+              <b>${Number(summary.totalHours || 0).toFixed(1)}</b>
+            </div>
+          </div>
+        `;
+      }).join("") : `<div class="empty">尚未建立員工。</div>`;
     }
 
     function renderLogTable() {
@@ -1554,6 +1625,8 @@
       $("saveEmployeeBtn").addEventListener("click", saveEmployee);
       $("manualClockBtn").addEventListener("click", manualClock);
       $("refreshAdminBtn").addEventListener("click", syncFromSheet);
+      $("refreshAdminHoursBtn").addEventListener("click", renderAdminHoursList);
+      $("adminHoursMonthInput").addEventListener("change", renderAdminHoursList);
       $("logMonthInput").addEventListener("change", () => {
         $("logDateInput").value = "";
         renderLogTable();
@@ -1586,6 +1659,7 @@
     async function init() {
       $("requestDate").value = nowParts().date;
       $("logMonthInput").value = nowParts().month;
+      $("adminHoursMonthInput").value = nowParts().month;
       $("logDateInput").value = "";
       $("manualDate").value = nowParts().date;
       bindEvents();
