@@ -609,6 +609,7 @@
     let currentPosition = null;
     let currentDistance = null;
     let gpsInRange = false;
+    let punchSubmitting = false;
 
     const $ = id => document.getElementById(id);
     const pad = value => String(value).padStart(2, "0");
@@ -936,9 +937,18 @@
       return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    function nextPaint() {
+      return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    }
+
     async function confirmPunch() {
+      if (punchSubmitting) return;
       if (!currentPosition) return alert("尚未取得 GPS 定位。");
-      showStatusModal("正在送出打卡", "請不要關閉畫面，系統正在寫入 Google Sheet。", "loading");
+      punchSubmitting = true;
+      $("confirmPunchBtn").disabled = true;
+      $("confirmPunchBtn").textContent = "送出中...";
+      showStatusModal("正在送出打卡", "已收到你的點擊，正在寫入 Google Sheet。", "loading");
+      await nextPaint();
       const employee = selectedEmployee();
       const matched = currentProfile.userId && employees.some(item => item.lineUserId === currentProfile.userId);
       if (currentProfile.userId && !matched) {
@@ -958,7 +968,6 @@
         locationStatus: gpsInRange ? "範圍內" : "範圍外",
         note: [$("punchNote").value.trim(), gpsInRange ? "" : `範圍外打卡，距離 ${Math.round(currentDistance)} 公尺`].filter(Boolean).join("；")
       };
-      $("confirmPunchBtn").disabled = true;
       $("confirmPunchBtn").textContent = "寫入中...";
       try {
         const result = await apiCall("clock", payload);
@@ -972,6 +981,7 @@
       } catch (error) {
         showStatusModal("打卡失敗", error.message, "error");
       } finally {
+        punchSubmitting = false;
         $("confirmPunchBtn").textContent = "確認打卡";
         if (currentPosition) $("confirmPunchBtn").disabled = false;
       }
