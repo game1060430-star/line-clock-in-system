@@ -229,7 +229,26 @@
     .badge.warn { background: var(--soft-amber); color: var(--amber); }
     .badge.bad { background: var(--soft-red); color: var(--red); }
     .badge.off { background: #e0e7ff; color: #3730a3; }
-    .dashboard-list { display: grid; gap: 8px; }
+    .admin-menu {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .admin-menu button {
+      min-height: 42px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #fff;
+      font-weight: 900;
+      color: var(--text);
+    }
+    .admin-menu button.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: #fff;
+    }
+    .dashboard-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
     .dashboard-row {
       border: 1px solid var(--line);
       border-left: 6px solid #cbd5e1;
@@ -339,6 +358,8 @@
       .profile { width: 100%; }
       .profile strong, .profile span { white-space: normal; }
       .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-left: 8px; padding-right: 8px; }
+      .admin-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .dashboard-list { grid-template-columns: 1fr; }
       .grid, .grid-3 { grid-template-columns: 1fr; }
       .panel { padding: 10px; }
       .table-wrap { overflow-x: visible; }
@@ -479,7 +500,17 @@
         </div>
 
         <div id="adminArea" class="hidden">
-          <div class="panel">
+          <div class="admin-menu" id="adminMenu">
+            <button class="active" type="button" data-admin-tab="dashboard">即時儀表板</button>
+            <button type="button" data-admin-tab="hours">員工工時</button>
+            <button type="button" data-admin-tab="employees">員工名單</button>
+            <button type="button" data-admin-tab="requests">補卡審核</button>
+            <button type="button" data-admin-tab="manual">管理補卡</button>
+            <button type="button" data-admin-tab="logs">打卡紀錄</button>
+            <button type="button" data-admin-tab="settings">系統設定</button>
+          </div>
+
+          <div class="panel" data-admin-section="dashboard">
             <h3>今日即時儀表板</h3>
             <div class="grid-3" style="margin-bottom:10px;">
               <div class="stat"><span>已上班</span><b id="todayClockInCount">0</b></div>
@@ -489,7 +520,7 @@
             <div id="todayDashboard" class="dashboard-list"></div>
           </div>
 
-          <div class="panel">
+          <div class="panel hidden" data-admin-section="hours">
             <h3>員工工時</h3>
             <div class="grid" style="margin-bottom:10px;">
               <div>
@@ -504,7 +535,7 @@
             <div id="adminHoursList" class="list"></div>
           </div>
 
-          <div class="panel">
+          <div class="panel hidden" data-admin-section="settings">
             <h3>系統設定</h3>
             <div class="grid">
               <div>
@@ -540,7 +571,7 @@
             </div>
           </div>
 
-          <div class="panel">
+          <div class="panel hidden" data-admin-section="employees">
             <h3>員工名單</h3>
             <div class="grid">
               <div>
@@ -563,12 +594,12 @@
             <div id="employeeList" class="list" style="margin-top:10px;"></div>
           </div>
 
-          <div class="panel">
+          <div class="panel hidden" data-admin-section="requests">
             <h3>補卡申請審核</h3>
             <div id="requestReviewList" class="list"></div>
           </div>
 
-          <div class="panel">
+          <div class="panel hidden" data-admin-section="manual">
             <h3>管理者直接補打卡</h3>
             <div class="grid">
               <div>
@@ -598,7 +629,7 @@
             </div>
           </div>
 
-          <div class="panel">
+          <div class="panel hidden" data-admin-section="logs">
             <h3>打卡紀錄</h3>
             <div class="grid" style="margin-bottom:10px;">
               <div>
@@ -690,6 +721,7 @@
     let summaries = cachedData.summaries;
     let currentProfile = { userId: "", displayName: "訪客", pictureUrl: "" };
     let adminUnlocked = false;
+    let activeAdminSection = "dashboard";
     let punchType = "上班";
     let currentPosition = null;
     let currentDistance = null;
@@ -1264,6 +1296,7 @@
 
     function openAdminArea() {
       adminUnlocked = true;
+      activeAdminSection = activeAdminSection || "dashboard";
       $("adminLock").classList.add("hidden");
       $("adminArea").classList.remove("hidden");
       renderAdmin();
@@ -1417,6 +1450,21 @@
       renderManualEmployeeSelect();
       renderRequestReviewList();
       renderLogTable();
+      renderAdminSection();
+    }
+
+    function switchAdminSection(section) {
+      activeAdminSection = section || "dashboard";
+      renderAdminSection();
+    }
+
+    function renderAdminSection() {
+      document.querySelectorAll("[data-admin-section]").forEach(section => {
+        section.classList.toggle("hidden", section.dataset.adminSection !== activeAdminSection);
+      });
+      document.querySelectorAll("[data-admin-tab]").forEach(button => {
+        button.classList.toggle("active", button.dataset.adminTab === activeAdminSection);
+      });
     }
 
     function renderSettings() {
@@ -1627,6 +1675,10 @@
       $("saveEmployeeBtn").addEventListener("click", saveEmployee);
       $("manualClockBtn").addEventListener("click", manualClock);
       $("refreshAdminBtn").addEventListener("click", syncFromSheet);
+      $("adminMenu").addEventListener("click", event => {
+        const button = event.target.closest("[data-admin-tab]");
+        if (button) switchAdminSection(button.dataset.adminTab);
+      });
       $("refreshAdminHoursBtn").addEventListener("click", renderAdminHoursList);
       $("adminHoursMonthInput").addEventListener("change", renderAdminHoursList);
       $("logMonthInput").addEventListener("change", () => {
