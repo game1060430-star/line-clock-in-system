@@ -579,6 +579,7 @@
 
   <script>
     const STORE_KEY = "line-gps-clock-v1";
+    const DATA_STORE_KEY = "line-gps-clock-data-v1";
     const DEFAULT_SETTINGS = {
       apiUrl: "https://script.google.com/macros/s/AKfycbwDDO0NF5msB2B3KBDvMkPpGN1EDD2hz8cEvKZGxrgOm_QECebVkUlHxnmo6D9_FsTx0w/exec",
       liffId: "2009988841-I1LdubR2",
@@ -590,10 +591,11 @@
     };
 
     let settings = loadSettings();
-    let employees = [];
-    let logs = [];
-    let requests = [];
-    let summaries = [];
+    const cachedData = loadCachedData();
+    let employees = cachedData.employees;
+    let logs = cachedData.logs;
+    let requests = cachedData.requests;
+    let summaries = cachedData.summaries;
     let currentProfile = { userId: "", displayName: "訪客", pictureUrl: "" };
     let adminUnlocked = false;
     let punchType = "上班";
@@ -614,6 +616,24 @@
 
     function saveLocalSettings() {
       localStorage.setItem(STORE_KEY, JSON.stringify(settings));
+    }
+
+    function loadCachedData() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(DATA_STORE_KEY)) || {};
+        return {
+          employees: (saved.employees || []).map(normalizeEmployee),
+          logs: (saved.logs || []).map(normalizeLog),
+          requests: (saved.requests || []).map(normalizeRequest),
+          summaries: saved.summaries || []
+        };
+      } catch {
+        return { employees: [], logs: [], requests: [], summaries: [] };
+      }
+    }
+
+    function saveCachedData() {
+      localStorage.setItem(DATA_STORE_KEY, JSON.stringify({ employees, logs, requests, summaries }));
     }
 
     function nowParts() {
@@ -715,6 +735,7 @@
         logs = (data.logs || []).map(normalizeLog);
         requests = (data.requests || []).map(normalizeRequest);
         summaries = data.summaries || [];
+        saveCachedData();
         renderAll();
       } catch (error) {
         console.warn(error);
@@ -752,6 +773,18 @@
         logId: row["紀錄ID"] || "",
         status: row["狀態(納入/取消)"] || "納入"
       };
+    }
+
+    function upsertLocalClock(payload) {
+      const log = normalizeLog(payload);
+      if (log.logId) logs = logs.filter(item => item.logId !== log.logId);
+      logs.unshift(log);
+      if (payload.monthlySummary) {
+        summaries = summaries.filter(item => !(item.lineUserId === log.lineUserId && item.month === payload.monthlySummary.month));
+        summaries.push(Object.assign({ lineUserId: log.lineUserId, month: payload.monthlySummary.month }, payload.monthlySummary));
+      }
+      saveCachedData();
+      renderAll();
     }
 
     function normalizeRequest(row) {
@@ -911,9 +944,10 @@
       $("confirmPunchBtn").disabled = true;
       $("confirmPunchBtn").textContent = "寫入中...";
       try {
-        await apiCall("clock", payload);
-        await syncFromSheet();
+        const result = await apiCall("clock", payload);
+        upsertLocalClock(result);
         showStatusModal("打卡完成", `${punchType}打卡完成，實際 ${actualTime}，系統歸入 ${roundToNearestHalfHour(actualTime)}。`, "success");
+        syncFromSheet();
         if (window.liff && liff.isInClient()) {
           await delay(1200);
           liff.closeWindow();
@@ -931,12 +965,17 @@
       $("queryIdentity").textContent = `員工：${employee.name || "未綁定"}。本頁只顯示當月總工時，不顯示每日明細。`;
       const month = nowParts().month;
       $("summaryMonth").textContent = `${month.replace("-", " 年 ")} 月累計總工時`;
+      const cached = findSummary(employee.lineUserId, month);
+      $("summaryHours").textContent = `${Number(cached?.totalHours || 0).toFixed(1)} 小時`;
+      if (!employee.lineUserId) return;
       try {
-        const summary = employee.lineUserId ? await apiCall("getMonthlySummary", { lineUserId: employee.lineUserId, month }) : findSummary(employee.lineUserId, month);
+        const summary = await apiCall("getMonthlySummary", { lineUserId: employee.lineUserId, month });
+        summaries = summaries.filter(item => !(item.lineUserId === employee.lineUserId && item.month === month));
+        summaries.push(Object.assign({ lineUserId: employee.lineUserId, month }, summary));
+        saveCachedData();
         $("summaryHours").textContent = `${Number(summary?.totalHours || 0).toFixed(1)} 小時`;
       } catch (error) {
-        $("summaryHours").textContent = "--";
-        $("queryIdentity").textContent = `讀取失敗：${error.message}`;
+        $("queryIdentity").textContent = `已先顯示快取資料，同步失敗：${error.message}`;
       }
     }
 
