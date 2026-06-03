@@ -8,7 +8,7 @@ const SHEETS = {
 };
 
 const HEADERS = {
-  [SHEETS.EMPLOYEES]: ['LINE ID', '員工姓名', '狀態(啟用/停用)'],
+  [SHEETS.EMPLOYEES]: ['LINE ID', '員工姓名', '狀態(啟用/停用)', '權限(員工/管理者)'],
   [SHEETS.LOGS]: ['LINE ID', '員工姓名', '日期', '實際打卡時間', '系統修正時間(30分單位)', '打卡類型(上班/下班)', '備註/來源(正常打卡/管理者補卡)', '紀錄ID', '狀態(納入/取消)'],
   [SHEETS.REQUESTS]: ['申請ID', 'LINE ID', '員工姓名', '日期', '類型(上班/下班)', '員工自述時間', '原因備註', '狀態(待審核/已核准/已拒絕)']
 };
@@ -272,10 +272,18 @@ function formatTime(date) {
 }
 
 function saveEmployee(payload) {
+  const lineUserId = payload.lineUserId || payload['LINE ID'] || '';
+  const employeeName = payload.name || payload.employeeName || payload['員工姓名'] || '';
+  const existing = rowsAsObjects(SHEETS.EMPLOYEES).find(row =>
+    (lineUserId && row['LINE ID'] === lineUserId) ||
+    (!lineUserId && employeeName && row['員工姓名'] === employeeName) ||
+    (employeeName && row['員工姓名'] === employeeName)
+  ) || {};
   const row = {
-    'LINE ID': payload.lineUserId || payload['LINE ID'] || '',
-    '員工姓名': payload.name || payload.employeeName || payload['員工姓名'] || '',
-    '狀態(啟用/停用)': payload.status || payload['狀態(啟用/停用)'] || '啟用'
+    'LINE ID': lineUserId,
+    '員工姓名': employeeName,
+    '狀態(啟用/停用)': payload.status || payload['狀態(啟用/停用)'] || existing['狀態(啟用/停用)'] || '啟用',
+    '權限(員工/管理者)': payload.role || payload['權限(員工/管理者)'] || existing['權限(員工/管理者)'] || '員工'
   };
   if (!row['員工姓名']) throw new Error('Employee name is required');
   upsertEmployee(row);

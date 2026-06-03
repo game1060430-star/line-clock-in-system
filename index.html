@@ -488,6 +488,13 @@
                 <label for="employeeNameInput">員工姓名</label>
                 <input id="employeeNameInput" type="text" placeholder="員工姓名">
               </div>
+              <div class="span-2">
+                <label for="employeeRoleInput">權限</label>
+                <select id="employeeRoleInput">
+                  <option value="員工">員工</option>
+                  <option value="管理者">管理者</option>
+                </select>
+              </div>
               <button id="saveEmployeeBtn" class="btn primary span-2" type="button">儲存員工</button>
             </div>
             <div id="employeeList" class="list" style="margin-top:10px;"></div>
@@ -757,7 +764,8 @@
       return {
         lineUserId: row["LINE ID"] || row.lineUserId || "",
         name: row["員工姓名"] || row.name || "",
-        status: row["狀態(啟用/停用)"] || row.status || "啟用"
+        status: row["狀態(啟用/停用)"] || row.status || "啟用",
+        role: row["權限(員工/管理者)"] || row.role || "員工"
       };
     }
 
@@ -830,6 +838,15 @@
       if (!selected) return { lineUserId: currentProfile.userId || "", name: currentProfile.displayName || "測試員工", status: "啟用" };
       if (currentProfile.userId && !selected.lineUserId) return Object.assign({}, selected, { lineUserId: currentProfile.userId });
       return selected;
+    }
+
+    function currentLineEmployee() {
+      if (!currentProfile.userId) return null;
+      return employees.find(employee => employee.lineUserId === currentProfile.userId) || null;
+    }
+
+    function isCurrentUserAdmin() {
+      return currentLineEmployee()?.role === "管理者";
     }
 
     function renderEmployeeSelect() {
@@ -1008,6 +1025,10 @@
 
     function unlockAdmin() {
       if ($("adminPinLogin").value !== String(settings.adminPin || "1234")) return alert("PIN 錯誤。");
+      openAdminArea();
+    }
+
+    function openAdminArea() {
       adminUnlocked = true;
       $("adminLock").classList.add("hidden");
       $("adminArea").classList.remove("hidden");
@@ -1046,13 +1067,15 @@
       const payload = {
         lineUserId: $("employeeLineIdInput").value.trim(),
         name: $("employeeNameInput").value.trim(),
-        status: "啟用"
+        status: "啟用",
+        role: $("employeeRoleInput").value || "員工"
       };
       if (!payload.name) return alert("請輸入員工姓名。");
       try {
         await apiCall("saveEmployee", payload);
         $("employeeNameInput").value = "";
         $("employeeLineIdInput").value = "";
+        $("employeeRoleInput").value = "員工";
         await syncFromSheet();
         alert("員工已儲存。");
       } catch (error) {
@@ -1103,6 +1126,18 @@
       await syncFromSheet();
     }
 
+    async function setEmployeeRole(index, role) {
+      const employee = employees[Number(index)];
+      if (!employee) return alert("找不到員工。");
+      try {
+        await apiCall("saveEmployee", { lineUserId: employee.lineUserId, name: employee.name, status: employee.status || "啟用", role });
+        await syncFromSheet();
+        alert(`${employee.name} 已設為${role}。`);
+      } catch (error) {
+        alert(`權限設定失敗：${error.message}`);
+      }
+    }
+
     async function reviewRequest(requestId, status) {
       const finalTimeInput = document.querySelector(`[data-final-time="${CSS.escape(requestId)}"]`);
       const payload = {
@@ -1138,13 +1173,16 @@
     }
 
     function renderEmployeeList() {
-      $("employeeList").innerHTML = employees.length ? employees.map(employee => `
+      $("employeeList").innerHTML = employees.length ? employees.map((employee, index) => `
         <div class="row">
           <div>
             <strong>${escapeHtml(employee.name)}</strong><br>
-            <small>LINE ID：${escapeHtml(employee.lineUserId || "未綁定")}｜${escapeHtml(employee.status)}</small>
+            <small>LINE ID：${escapeHtml(employee.lineUserId || "未綁定")}｜${escapeHtml(employee.status)}｜${escapeHtml(employee.role)}</small>
           </div>
-          <button class="btn red" type="button" data-delete-employee="${escapeHtml(employee.lineUserId)}">停用</button>
+          <div class="actions">
+            <button class="btn ${employee.role === "管理者" ? "ghost" : "blue"}" type="button" data-role-index="${index}" data-role-value="${employee.role === "管理者" ? "員工" : "管理者"}">${employee.role === "管理者" ? "改為員工" : "設為管理者"}</button>
+            <button class="btn red" type="button" data-delete-employee="${escapeHtml(employee.lineUserId)}">停用</button>
+          </div>
         </div>
       `).join("") : `<div class="empty">尚未建立員工。</div>`;
     }
@@ -1198,6 +1236,7 @@
 
     function renderAll() {
       renderEmployeeSelect();
+      if (!$("page-admin").classList.contains("hidden") && isCurrentUserAdmin()) openAdminArea();
       if (adminUnlocked) renderAdmin();
       if (!$("page-query").classList.contains("hidden")) refreshSummary();
     }
@@ -1223,6 +1262,7 @@
       if (page === "admin") {
         $("heroTitle").textContent = "管理端";
         $("heroText").textContent = "管理者可設定 GPS、維護員工、審核補卡與查看打卡紀錄。";
+        if (isCurrentUserAdmin()) openAdminArea();
       }
     }
 
@@ -1275,6 +1315,8 @@
       $("employeeList").addEventListener("click", event => {
         const button = event.target.closest("[data-delete-employee]");
         if (button) deleteEmployee(button.dataset.deleteEmployee);
+        const roleButton = event.target.closest("[data-role-index]");
+        if (roleButton) setEmployeeRole(roleButton.dataset.roleIndex, roleButton.dataset.roleValue);
       });
       $("requestReviewList").addEventListener("click", event => {
         const approve = event.target.closest("[data-approve]");
