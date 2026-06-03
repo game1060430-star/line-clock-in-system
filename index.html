@@ -918,6 +918,10 @@
       return Boolean(currentPosition && (!quickPunchRequested || currentProfile.userId) && !punchSubmitting);
     }
 
+    function isActiveEmployee(employee) {
+      return employee?.status === "啟用";
+    }
+
     function minutesFromTime(timeText) {
       const match = String(timeText || "").match(/^(\d{1,2}):(\d{2})/);
       if (!match) return 0;
@@ -1184,6 +1188,32 @@
         ? (currentLineEmployee() || { lineUserId: currentProfile.userId, name: currentProfile.displayName || "未命名員工", status: "啟用" })
         : selectedEmployee();
       if (!employee) return alert("尚未確認員工身分，請稍候再試。");
+      const existingEmployee = currentLineEmployee();
+      if (quickPunchRequested && !existingEmployee) {
+        punchSubmitting = true;
+        $("quickConfirmPunchBtn").disabled = true;
+        $("quickConfirmPunchBtn").textContent = "送出中...";
+        closeQuickPunchModal();
+        showStatusModal("已送出員工審核", "你的 LINE 身分已送給管理者，核准後才能使用打卡功能。", "error");
+        try {
+          await apiCall("saveEmployee", { lineUserId: currentProfile.userId, name: employee.name, status: "待審核" });
+          await syncFromSheet();
+        } catch (error) {
+          showStatusModal("送出審核失敗", error.message, "error");
+        } finally {
+          punchSubmitting = false;
+          $("quickConfirmPunchBtn").textContent = "確認打卡";
+        }
+        return;
+      }
+      if (quickPunchRequested && !isActiveEmployee(existingEmployee)) {
+        showStatusModal("尚未核准", "請等管理者核准員工身分後再打卡。", "error");
+        return;
+      }
+      if (employee.status && employee.status !== "啟用") {
+        showStatusModal("尚未核准", "請等管理者核准員工身分後再打卡。", "error");
+        return;
+      }
       const actualTime = nowParts().time.slice(0, 5);
       const date = nowParts().date;
       if (hasActiveClock(employee.lineUserId, date, punchType)) {
@@ -1409,9 +1439,21 @@
     }
 
     async function deleteEmployee(lineUserId) {
-      if (!confirm("確定停用這位員工？")) return;
+      if (!confirm("確定刪除這位員工？刪除後不會再顯示。")) return;
       await apiCall("deleteEmployee", { lineUserId });
       await syncFromSheet();
+    }
+
+    async function approveEmployee(index) {
+      const employee = employees[Number(index)];
+      if (!employee) return alert("找不到員工。");
+      try {
+        await apiCall("saveEmployee", { lineUserId: employee.lineUserId, name: employee.name, status: "啟用", role: employee.role || "員工" });
+        await syncFromSheet();
+        alert(`${employee.name} 已核准，可以開始打卡。`);
+      } catch (error) {
+        alert(`核准失敗：${error.message}`);
+      }
     }
 
     async function setEmployeeRole(index, role) {
@@ -1485,8 +1527,8 @@
             <small>LINE ID：${escapeHtml(employee.lineUserId || "未綁定")}｜${escapeHtml(employee.status)}｜${escapeHtml(effectiveRole(employee))}</small>
           </div>
           <div class="actions">
-            <button class="btn ${effectiveRole(employee) === "管理者" ? "ghost" : "blue"}" type="button" data-role-index="${index}" data-role-value="${effectiveRole(employee) === "管理者" ? "員工" : "管理者"}">${effectiveRole(employee) === "管理者" ? "改為員工" : "設為管理者"}</button>
-            <button class="btn red" type="button" data-delete-employee="${escapeHtml(employee.lineUserId)}">停用</button>
+            ${employee.status === "待審核" ? `<button class="btn primary" type="button" data-approve-employee="${index}">核准</button>` : `<button class="btn ${effectiveRole(employee) === "管理者" ? "ghost" : "blue"}" type="button" data-role-index="${index}" data-role-value="${effectiveRole(employee) === "管理者" ? "員工" : "管理者"}">${effectiveRole(employee) === "管理者" ? "改為員工" : "設為管理者"}</button>`}
+            <button class="btn red" type="button" data-delete-employee="${escapeHtml(employee.lineUserId)}">刪除</button>
           </div>
         </div>
       `).join("") : `<div class="empty">尚未建立員工。</div>`;
@@ -1518,7 +1560,7 @@
 
     function renderTodayDashboard() {
       const today = nowParts().date;
-      const activeEmployees = employees.filter(employee => employee.status !== "停用");
+      const activeEmployees = employees.filter(isActiveEmployee);
       const todayLogs = logs.filter(log => log.date === today && log.status !== "取消");
       const rows = activeEmployees.map(employee => {
         const employeeLogs = todayLogs.filter(log => log.lineUserId === employee.lineUserId || (!employee.lineUserId && log.name === employee.name));
@@ -1550,7 +1592,7 @@
 
     function renderAdminHoursList() {
       const month = $("adminHoursMonthInput").value || nowParts().month;
-      const activeEmployees = employees.filter(employee => employee.status !== "停用");
+      const activeEmployees = employees.filter(isActiveEmployee);
       $("adminHoursList").innerHTML = activeEmployees.length ? activeEmployees.map(employee => {
         const summary = calculateEmployeeMonthSummary(employee, month);
         return `
@@ -1693,6 +1735,8 @@
       $("employeeList").addEventListener("click", event => {
         const button = event.target.closest("[data-delete-employee]");
         if (button) deleteEmployee(button.dataset.deleteEmployee);
+        const approveButton = event.target.closest("[data-approve-employee]");
+        if (approveButton) approveEmployee(approveButton.dataset.approveEmployee);
         const roleButton = event.target.closest("[data-role-index]");
         if (roleButton) setEmployeeRole(roleButton.dataset.roleIndex, roleButton.dataset.roleValue);
       });
