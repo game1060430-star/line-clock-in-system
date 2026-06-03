@@ -387,7 +387,7 @@
       <section id="page-query" class="page hidden">
         <div class="panel">
           <h3>當月總工時</h3>
-          <div id="queryIdentity" class="hint" style="margin-bottom:10px;">讀取員工資料中...</div>
+          <div id="queryIdentity" class="hint hidden" style="margin-bottom:10px;"></div>
           <div class="summary-number">
             <span id="summaryMonth">本月累計總工時</span>
             <b id="summaryHours">--</b>
@@ -996,7 +996,8 @@
 
     async function refreshSummary() {
       const employee = selectedEmployee();
-      $("queryIdentity").textContent = `員工：${employee.name || "未綁定"}。本頁只顯示當月總工時，不顯示每日明細。`;
+      $("queryIdentity").classList.add("hidden");
+      $("queryIdentity").textContent = "";
       const month = nowParts().month;
       $("summaryMonth").textContent = `${month.replace("-", " 年 ")} 月累計總工時`;
       const cached = findSummary(employee.lineUserId, month);
@@ -1009,6 +1010,7 @@
         saveCachedData();
         $("summaryHours").textContent = `${Number(summary?.totalHours || 0).toFixed(1)} 小時`;
       } catch (error) {
+        $("queryIdentity").classList.remove("hidden");
         $("queryIdentity").textContent = `已先顯示快取資料，同步失敗：${error.message}`;
       }
     }
@@ -1273,7 +1275,7 @@
       }
       if (page === "query") {
         $("heroTitle").textContent = "當月總工時";
-        $("heroText").textContent = "員工端只顯示當月總工時，不顯示每日明細。";
+        $("heroText").textContent = "";
         refreshSummary();
       }
       if (page === "admin") {
