@@ -9,7 +9,7 @@ const SHEETS = {
 
 const HEADERS = {
   [SHEETS.EMPLOYEES]: ['LINE ID', '員工姓名', '狀態(啟用/停用)'],
-  [SHEETS.LOGS]: ['LINE ID', '員工姓名', '日期', '實際打卡時間', '系統修正時間(30分單位)', '打卡類型(上班/下班)', '備註/來源(正常打卡/管理者補卡)'],
+  [SHEETS.LOGS]: ['LINE ID', '員工姓名', '日期', '實際打卡時間', '系統修正時間(30分單位)', '打卡類型(上班/下班)', '備註/來源(正常打卡/管理者補卡)', '紀錄ID', '狀態(納入/取消)'],
   [SHEETS.REQUESTS]: ['申請ID', 'LINE ID', '員工姓名', '日期', '類型(上班/下班)', '員工自述時間', '原因備註', '狀態(待審核/已核准/已拒絕)']
 };
 
@@ -40,6 +40,7 @@ function doPost(e) {
     if (action === 'deleteEmployee') return jsonOutput({ ok: true, payload: setEmployeeStatus(payload.lineUserId, '停用') });
     if (action === 'saveCorrectionRequest') return jsonOutput({ ok: true, payload: saveCorrectionRequest(payload) });
     if (action === 'reviewCorrectionRequest') return jsonOutput({ ok: true, payload: reviewCorrectionRequest(payload) });
+    if (action === 'updateClockLogStatus') return jsonOutput({ ok: true, payload: updateClockLogStatus(payload) });
     return jsonOutput({ ok: false, error: 'Unknown action: ' + action });
   } catch (error) {
     return jsonOutput({ ok: false, error: String(error && error.message ? error.message : error) });
@@ -84,7 +85,9 @@ function saveClock(payload) {
     '實際打卡時間': actualTime,
     '系統修正時間(30分單位)': roundedTime,
     '打卡類型(上班/下班)': type,
-    '備註/來源(正常打卡/管理者補卡)': noteParts.join('；')
+    '備註/來源(正常打卡/管理者補卡)': noteParts.join('；'),
+    '紀錄ID': payload.logId || Utilities.getUuid(),
+    '狀態(納入/取消)': payload.status || '納入'
   };
   appendObject(SHEETS.LOGS, row);
   return Object.assign({}, row, { monthlySummary: getMonthlySummary(lineUserId, date.slice(0, 7)) });
@@ -142,7 +145,8 @@ function getMonthlySummary(lineUserId, month) {
   const targetMonth = month || formatDate(new Date()).slice(0, 7);
   const logs = rowsAsObjects(SHEETS.LOGS).filter(row =>
     row['LINE ID'] === lineUserId &&
-    normalizeDate(row['日期']).slice(0, 7) === targetMonth
+    normalizeDate(row['日期']).slice(0, 7) === targetMonth &&
+    normalizeLogStatus(row) !== '取消'
   );
   return calculateSummary(logs, targetMonth);
 }
@@ -166,6 +170,7 @@ function calculateSummary(logs, month) {
   const byDate = {};
   logs.forEach(log => {
     const date = normalizeDate(log['日期']);
+    if (normalizeLogStatus(log) === '取消') return;
     if (!byDate[date]) byDate[date] = [];
     byDate[date].push(log);
   });
@@ -200,6 +205,28 @@ function normalizeType(type) {
   if (text === 'on' || text === 'in' || text === '上班') return '上班';
   if (text === 'off' || text === 'out' || text === '下班') return '下班';
   return type || '上班';
+}
+
+function normalizeLogStatus(log) {
+  return log['狀態(納入/取消)'] || '納入';
+}
+
+function updateClockLogStatus(payload) {
+  const logId = payload.logId;
+  const status = payload.status === 'cancelled' || payload.status === '取消' ? '取消' : '納入';
+  const sheet = getSpreadsheet().getSheetByName(SHEETS.LOGS);
+  const rows = sheet.getDataRange().getValues();
+  const headers = HEADERS[SHEETS.LOGS];
+  const idIndex = headers.indexOf('紀錄ID');
+  const statusIndex = headers.indexOf('狀態(納入/取消)');
+  if (idIndex < 0 || statusIndex < 0) throw new Error('Log status columns are missing');
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][idIndex] === logId) {
+      sheet.getRange(i + 1, statusIndex + 1).setValue(status);
+      return { logId: logId, status: status };
+    }
+  }
+  throw new Error('Clock log not found');
 }
 
 function normalizeDate(value) {

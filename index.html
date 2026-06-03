@@ -269,7 +269,9 @@
       td:nth-child(3)::before { content: "類型"; }
       td:nth-child(4)::before { content: "實際"; }
       td:nth-child(5)::before { content: "修正"; }
-      td:nth-child(6)::before { content: "備註"; }
+      td:nth-child(6)::before { content: "狀態"; }
+      td:nth-child(7)::before { content: "備註"; }
+      td:nth-child(8)::before { content: "操作"; }
     }
   </style>
 </head>
@@ -315,9 +317,10 @@
                 <div id="dateNow" class="date-now">讀取日期</div>
               </div>
             </div>
-            <div id="browserEmployeeWrap" class="hidden">
-              <label for="employeeSelect">瀏覽器測試員工</label>
+            <div id="employeeBindWrap" class="hidden span-2">
+              <label for="employeeSelect">選擇你的員工身分</label>
               <select id="employeeSelect"></select>
+              <button id="bindEmployeeBtn" class="btn blue" type="button" style="margin-top:8px;">綁定目前 LINE 到這位員工</button>
             </div>
             <div>
               <label>打卡類型</label>
@@ -453,6 +456,36 @@
           </div>
 
           <div class="panel">
+            <h3>管理者直接補打卡</h3>
+            <div class="grid">
+              <div>
+                <label for="manualEmployeeSelect">員工</label>
+                <select id="manualEmployeeSelect"></select>
+              </div>
+              <div>
+                <label for="manualDate">日期</label>
+                <input id="manualDate" type="date">
+              </div>
+              <div>
+                <label for="manualType">類型</label>
+                <select id="manualType">
+                  <option value="上班">上班</option>
+                  <option value="下班">下班</option>
+                </select>
+              </div>
+              <div>
+                <label for="manualTime">時間</label>
+                <input id="manualTime" type="time" value="06:30">
+              </div>
+              <div class="span-2">
+                <label for="manualNote">備註</label>
+                <textarea id="manualNote" placeholder="例如忘記打卡、老闆補登。"></textarea>
+              </div>
+              <button id="manualClockBtn" class="btn amber span-2" type="button">新增補打卡</button>
+            </div>
+          </div>
+
+          <div class="panel">
             <h3>打卡紀錄</h3>
             <div class="grid" style="margin-bottom:10px;">
               <div>
@@ -472,7 +505,7 @@
             <div class="table-wrap">
               <table>
                 <thead>
-                  <tr><th>日期</th><th>員工</th><th>類型</th><th>實際</th><th>修正</th><th>備註</th></tr>
+                  <tr><th>日期</th><th>員工</th><th>類型</th><th>實際</th><th>修正</th><th>狀態</th><th>備註</th><th>操作</th></tr>
                 </thead>
                 <tbody id="logTable"></tbody>
               </table>
@@ -654,7 +687,9 @@
         actualTime: toTimeText(row["實際打卡時間"]),
         roundedTime: toTimeText(row["系統修正時間(30分單位)"]),
         type: row["打卡類型(上班/下班)"] || "",
-        note: row["備註/來源(正常打卡/管理者補卡)"] || ""
+        note: row["備註/來源(正常打卡/管理者補卡)"] || "",
+        logId: row["紀錄ID"] || "",
+        status: row["狀態(納入/取消)"] || "納入"
       };
     }
 
@@ -695,20 +730,39 @@
       if (currentProfile.userId) {
         const matched = employees.find(employee => employee.lineUserId === currentProfile.userId);
         if (matched) return matched;
-        return { lineUserId: currentProfile.userId, name: currentProfile.displayName || "LINE 使用者", status: "啟用" };
       }
-      const selectedId = $("employeeSelect").value;
-      return employees.find(employee => employee.lineUserId === selectedId) || employees[0] || { lineUserId: "", name: "測試員工", status: "啟用" };
+      const selectedIndex = Number($("employeeSelect").value || 0);
+      const selected = employees[selectedIndex] || employees[0];
+      if (!selected) return { lineUserId: currentProfile.userId || "", name: currentProfile.displayName || "測試員工", status: "啟用" };
+      if (currentProfile.userId && !selected.lineUserId) return Object.assign({}, selected, { lineUserId: currentProfile.userId });
+      return selected;
     }
 
     function renderEmployeeSelect() {
-      const wrap = $("browserEmployeeWrap");
-      wrap.classList.toggle("hidden", Boolean(currentProfile.userId));
+      const wrap = $("employeeBindWrap");
+      const matched = currentProfile.userId && employees.some(employee => employee.lineUserId === currentProfile.userId);
+      wrap.classList.toggle("hidden", Boolean(currentProfile.userId && matched));
       const current = $("employeeSelect").value;
       $("employeeSelect").innerHTML = employees.length
-        ? employees.map(employee => `<option value="${escapeHtml(employee.lineUserId)}">${escapeHtml(employee.name || "(未命名)")}</option>`).join("")
+        ? employees.map((employee, index) => `<option value="${index}">${escapeHtml(employee.name || "(未命名)")}${employee.lineUserId ? "（已綁定）" : ""}</option>`).join("")
         : `<option value="">測試員工</option>`;
-      if (employees.some(employee => employee.lineUserId === current)) $("employeeSelect").value = current;
+      if (current && Number(current) < employees.length) $("employeeSelect").value = current;
+      $("bindEmployeeBtn").classList.toggle("hidden", !currentProfile.userId || Boolean(matched));
+    }
+
+    async function bindSelectedEmployee() {
+      if (!currentProfile.userId) return alert("請從 LINE 內開啟後再綁定。");
+      const index = Number($("employeeSelect").value || 0);
+      const employee = employees[index];
+      if (!employee) return alert("請先選擇員工。");
+      if (employee.lineUserId && employee.lineUserId !== currentProfile.userId && !confirm("這位員工已綁定其他 LINE ID，確定改綁目前 LINE？")) return;
+      try {
+        await apiCall("saveEmployee", { lineUserId: currentProfile.userId, name: employee.name, status: "啟用" });
+        await syncFromSheet();
+        alert(`已綁定 ${employee.name}`);
+      } catch (error) {
+        alert(`綁定失敗：${error.message}`);
+      }
     }
 
     async function locate() {
@@ -755,6 +809,10 @@
     async function confirmPunch() {
       if (!currentPosition) return alert("尚未取得 GPS 定位。");
       const employee = selectedEmployee();
+      const matched = currentProfile.userId && employees.some(item => item.lineUserId === currentProfile.userId);
+      if (currentProfile.userId && !matched) {
+        await apiCall("saveEmployee", { lineUserId: currentProfile.userId, name: employee.name, status: "啟用" });
+      }
       const actualTime = nowParts().time.slice(0, 5);
       const payload = {
         lineUserId: employee.lineUserId,
@@ -879,6 +937,43 @@
       }
     }
 
+    async function manualClock() {
+      const employee = employees[Number($("manualEmployeeSelect").value || 0)];
+      if (!employee) return alert("請先選擇員工。");
+      const payload = {
+        lineUserId: employee.lineUserId,
+        employeeName: employee.name,
+        date: $("manualDate").value,
+        type: $("manualType").value,
+        actualTime: $("manualTime").value,
+        source: "管理者補卡",
+        locationStatus: "管理者補卡",
+        note: $("manualNote").value.trim()
+      };
+      if (!payload.date || !payload.actualTime) return alert("請填日期與時間。");
+      try {
+        await apiCall("clock", payload);
+        $("manualNote").value = "";
+        await syncFromSheet();
+        alert("補打卡已新增，工時已重新計算。");
+      } catch (error) {
+        alert(`補打卡失敗：${error.message}`);
+      }
+    }
+
+    async function updateLogStatus(logId, status) {
+      if (!logId) return alert("這筆舊紀錄沒有紀錄ID，無法取消。請用新版產生的紀錄操作。");
+      const label = status === "cancelled" ? "取消納入" : "恢復納入";
+      if (!confirm(`確定要${label}這筆打卡？`)) return;
+      try {
+        await apiCall("updateClockLogStatus", { logId, status });
+        await syncFromSheet();
+        alert(`已${label}，工時已重新計算。`);
+      } catch (error) {
+        alert(`操作失敗：${error.message}`);
+      }
+    }
+
     async function deleteEmployee(lineUserId) {
       if (!confirm("確定停用這位員工？")) return;
       await apiCall("deleteEmployee", { lineUserId });
@@ -904,6 +999,7 @@
     function renderAdmin() {
       renderSettings();
       renderEmployeeList();
+      renderManualEmployeeSelect();
       renderRequestReviewList();
       renderLogTable();
     }
@@ -928,6 +1024,12 @@
           <button class="btn red" type="button" data-delete-employee="${escapeHtml(employee.lineUserId)}">停用</button>
         </div>
       `).join("") : `<div class="empty">尚未建立員工。</div>`;
+    }
+
+    function renderManualEmployeeSelect() {
+      $("manualEmployeeSelect").innerHTML = employees.length
+        ? employees.map((employee, index) => `<option value="${index}">${escapeHtml(employee.name || "(未命名)")}${employee.lineUserId ? "" : "（未綁定）"}</option>`).join("")
+        : `<option value="">尚未建立員工</option>`;
     }
 
     function renderRequestReviewList() {
@@ -961,9 +1063,13 @@
           <td>${escapeHtml(log.type)}</td>
           <td>${escapeHtml(log.actualTime)}</td>
           <td>${escapeHtml(log.roundedTime)}</td>
+          <td><span class="badge ${log.status === "取消" ? "bad" : (log.note.includes("範圍外") ? "warn" : "ok")}">${escapeHtml(log.status === "取消" ? "取消" : (log.note.includes("範圍外") ? "範圍外納入" : "納入"))}</span></td>
           <td>${escapeHtml(log.note)}</td>
+          <td>
+            <button class="btn ${log.status === "取消" ? "primary" : "red"}" type="button" data-log-status="${escapeHtml(log.logId)}" data-status="${log.status === "取消" ? "active" : "cancelled"}">${log.status === "取消" ? "恢復納入" : "取消納入"}</button>
+          </td>
         </tr>
-      `).join("") : `<tr><td colspan="6"><div class="empty">這個月沒有打卡紀錄。</div></td></tr>`;
+      `).join("") : `<tr><td colspan="8"><div class="empty">這個月沒有打卡紀錄。</div></td></tr>`;
     }
 
     function renderAll() {
@@ -1021,6 +1127,7 @@
       $("employeeSelect").addEventListener("change", () => {
         if (!$("page-query").classList.contains("hidden")) refreshSummary();
       });
+      $("bindEmployeeBtn").addEventListener("click", bindSelectedEmployee);
       $("confirmPunchBtn").addEventListener("click", confirmPunch);
       $("refreshSummaryBtn").addEventListener("click", refreshSummary);
       $("openRequestBtn").addEventListener("click", () => $("requestPanel").classList.toggle("hidden"));
@@ -1029,6 +1136,7 @@
       $("saveSettingsBtn").addEventListener("click", saveSettings);
       $("useCurrentLocationBtn").addEventListener("click", setCurrentLocationAsSite);
       $("saveEmployeeBtn").addEventListener("click", saveEmployee);
+      $("manualClockBtn").addEventListener("click", manualClock);
       $("refreshAdminBtn").addEventListener("click", syncFromSheet);
       $("logMonthInput").addEventListener("change", renderLogTable);
       $("employeeList").addEventListener("click", event => {
@@ -1041,11 +1149,16 @@
         if (approve) reviewRequest(approve.dataset.approve, "approved");
         if (reject) reviewRequest(reject.dataset.reject, "rejected");
       });
+      $("logTable").addEventListener("click", event => {
+        const button = event.target.closest("[data-log-status]");
+        if (button) updateLogStatus(button.dataset.logStatus, button.dataset.status);
+      });
     }
 
     async function init() {
       $("requestDate").value = nowParts().date;
       $("logMonthInput").value = nowParts().month;
+      $("manualDate").value = nowParts().date;
       bindEvents();
       updateClock();
       setInterval(updateClock, 1000);
