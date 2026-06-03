@@ -1049,8 +1049,11 @@
       bindEvents();
       updateClock();
       setInterval(updateClock, 1000);
-      await Promise.allSettled([initLineProfile(), syncFromSheet()]);
       handleLaunchAction();
+      Promise.allSettled([initLineProfile(), syncFromSheet()]).then(() => {
+        renderAll();
+        handleLaunchAction();
+      });
     }
 
     init();
