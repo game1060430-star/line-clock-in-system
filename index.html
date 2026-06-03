@@ -320,6 +320,17 @@
       font-size: 24px;
     }
     .modal-icon.bad { background: var(--red); }
+    .quick-punch-box { text-align: left; }
+    .quick-punch-box h3 { text-align: center; }
+    .quick-punch-grid { display: grid; gap: 8px; margin: 12px 0; }
+    .quick-punch-line {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 10px;
+      background: #fbfcfb;
+    }
+    .quick-punch-line span { display: block; color: var(--muted); font-size: 12px; font-weight: 900; }
+    .quick-punch-line b { display: block; margin-top: 3px; font-size: 17px; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .hidden { display: none !important; }
     @media (max-width: 760px) {
@@ -621,6 +632,28 @@
     </div>
   </div>
 
+  <div id="quickPunchModal" class="modal hidden" role="dialog" aria-live="assertive" aria-modal="true">
+    <div class="modal-box quick-punch-box">
+      <h3 id="quickPunchTitle">上班打卡</h3>
+      <div class="quick-punch-grid">
+        <div class="quick-punch-line">
+          <span>員工</span>
+          <b id="quickEmployeeName">讀取中</b>
+        </div>
+        <div class="quick-punch-line">
+          <span>目前時間</span>
+          <b id="quickTimeNow">--:--:--</b>
+        </div>
+        <div class="quick-punch-line">
+          <span>定位</span>
+          <b id="quickGpsStatus">定位中...</b>
+        </div>
+      </div>
+      <button id="quickConfirmPunchBtn" class="btn primary" type="button" disabled style="width:100%;">確認打卡</button>
+      <button id="quickCloseBtn" class="btn ghost" type="button" style="width:100%; margin-top:8px;">取消</button>
+    </div>
+  </div>
+
   <script>
     const STORE_KEY = "line-gps-clock-v1";
     const DATA_STORE_KEY = "line-gps-clock-data-v1";
@@ -647,6 +680,7 @@
     let currentDistance = null;
     let gpsInRange = false;
     let punchSubmitting = false;
+    let quickPunchRequested = false;
 
     const $ = id => document.getElementById(id);
     const pad = value => String(value).padStart(2, "0");
@@ -692,6 +726,7 @@
     function updateClock() {
       const parts = nowParts();
       $("timeNow").textContent = parts.time;
+      if ($("quickTimeNow")) $("quickTimeNow").textContent = parts.time;
       $("dateNow").textContent = parts.now.toLocaleDateString("zh-TW", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
     }
 
@@ -971,9 +1006,12 @@
       $("gpsStatus").className = "hint warn";
       $("gpsStatus").textContent = "GPS 定位中...";
       $("confirmPunchBtn").disabled = true;
+      $("quickGpsStatus").textContent = "定位中...";
+      $("quickConfirmPunchBtn").disabled = true;
       if (!navigator.geolocation) {
         $("gpsStatus").className = "hint bad";
         $("gpsStatus").textContent = "手機不支援 GPS 定位。";
+        $("quickGpsStatus").textContent = "手機不支援 GPS";
         return;
       }
       navigator.geolocation.getCurrentPosition(position => {
@@ -987,15 +1025,21 @@
           $("gpsStatus").className = "hint";
           $("gpsStatus").textContent = `範圍內｜${Math.round(currentDistance)} 公尺`;
           $("confirmPunchBtn").disabled = false;
+          $("quickGpsStatus").textContent = `範圍內｜${Math.round(currentDistance)} 公尺`;
+          $("quickConfirmPunchBtn").disabled = false;
         } else {
           $("gpsStatus").className = "hint bad";
           $("gpsStatus").textContent = `範圍外｜${Math.round(currentDistance)} 公尺`;
           $("confirmPunchBtn").disabled = false;
+          $("quickGpsStatus").textContent = `範圍外｜${Math.round(currentDistance)} 公尺`;
+          $("quickConfirmPunchBtn").disabled = false;
         }
       }, error => {
         $("gpsStatus").className = "hint bad";
         $("gpsStatus").textContent = `定位失敗：${error.message || "請允許 LINE 使用定位權限"}`;
+        $("quickGpsStatus").textContent = "定位失敗";
         $("confirmPunchBtn").disabled = true;
+        $("quickConfirmPunchBtn").disabled = true;
       }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
     }
 
@@ -1023,6 +1067,26 @@
       $("statusModal").classList.add("hidden");
     }
 
+    function openQuickPunchModal() {
+      const employee = currentLineEmployee();
+      if (!employee) {
+        $("quickPunchModal").classList.add("hidden");
+        return;
+      }
+      $("quickPunchTitle").textContent = `${punchType}打卡`;
+      $("quickEmployeeName").textContent = employee.name || currentProfile.displayName || "未命名員工";
+      $("quickTimeNow").textContent = nowParts().time;
+      $("quickGpsStatus").textContent = currentPosition
+        ? `${gpsInRange ? "範圍內" : "範圍外"}｜${Math.round(currentDistance)} 公尺`
+        : "定位中...";
+      $("quickConfirmPunchBtn").disabled = !currentPosition || punchSubmitting;
+      $("quickPunchModal").classList.remove("hidden");
+    }
+
+    function closeQuickPunchModal() {
+      $("quickPunchModal").classList.add("hidden");
+    }
+
     function delay(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
     }
@@ -1041,7 +1105,10 @@
       if (missingClockIn && !confirm("今天尚未有上班打卡紀錄。仍要送出下班卡嗎？送出後請記得申請補上班卡，工時才會計算。")) return;
       punchSubmitting = true;
       $("confirmPunchBtn").disabled = true;
+      $("quickConfirmPunchBtn").disabled = true;
       $("confirmPunchBtn").textContent = "送出中...";
+      $("quickConfirmPunchBtn").textContent = "送出中...";
+      closeQuickPunchModal();
       showStatusModal("正在送出打卡", "已收到你的點擊，正在寫入 Google Sheet。", "loading");
       await nextPaint();
       const matched = currentProfile.userId && employees.some(item => item.lineUserId === currentProfile.userId);
@@ -1080,7 +1147,9 @@
       } finally {
         punchSubmitting = false;
         $("confirmPunchBtn").textContent = "確認打卡";
+        $("quickConfirmPunchBtn").textContent = "確認打卡";
         if (currentPosition) $("confirmPunchBtn").disabled = false;
+        if (currentPosition) $("quickConfirmPunchBtn").disabled = false;
       }
     }
 
@@ -1403,6 +1472,7 @@
       if (!$("page-admin").classList.contains("hidden") && isCurrentUserAdmin()) openAdminArea();
       if (adminUnlocked) renderAdmin();
       if (!$("page-query").classList.contains("hidden")) refreshSummary();
+      if (quickPunchRequested && !$("page-punch").classList.contains("hidden")) openQuickPunchModal();
     }
 
     function switchPage(page, type) {
@@ -1417,6 +1487,7 @@
         $("punchTitle").textContent = `${punchType}打卡`;
         $("punchTypeLabel").textContent = punchType;
         locate();
+        if (quickPunchRequested) openQuickPunchModal();
       }
       if (page === "query") {
         $("heroTitle").textContent = "當月總工時";
@@ -1434,8 +1505,18 @@
       const params = new URLSearchParams(location.search);
       const type = params.get("type");
       const action = params.get("action");
-      if (type === "on" || action === "clock-in") return switchPage("punch", "上班");
-      if (type === "off" || action === "clock-out") return switchPage("punch", "下班");
+      if (type === "on" || action === "clock-in") {
+        quickPunchRequested = true;
+        switchPage("punch", "上班");
+        openQuickPunchModal();
+        return;
+      }
+      if (type === "off" || action === "clock-out") {
+        quickPunchRequested = true;
+        switchPage("punch", "下班");
+        openQuickPunchModal();
+        return;
+      }
       if (type === "query") return switchPage("query");
       if (action === "request") {
         switchPage("query");
@@ -1457,6 +1538,8 @@
       });
       $("bindEmployeeBtn").addEventListener("click", bindSelectedEmployee);
       $("statusCloseBtn").addEventListener("click", hideStatusModal);
+      $("quickCloseBtn").addEventListener("click", closeQuickPunchModal);
+      $("quickConfirmPunchBtn").addEventListener("click", confirmPunch);
       $("confirmPunchBtn").addEventListener("click", confirmPunch);
       $("refreshSummaryBtn").addEventListener("click", refreshSummary);
       $("openRequestBtn").addEventListener("click", () => $("requestPanel").classList.toggle("hidden"));
