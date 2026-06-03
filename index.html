@@ -867,6 +867,10 @@
       return activeLogsFor(lineUserId, date).some(log => log.type === type);
     }
 
+    function canConfirmQuickPunch() {
+      return Boolean(currentPosition && (!quickPunchRequested || currentLineEmployee()) && !punchSubmitting);
+    }
+
     function minutesFromTime(timeText) {
       const match = String(timeText || "").match(/^(\d{1,2}):(\d{2})/);
       if (!match) return 0;
@@ -1026,13 +1030,13 @@
           $("gpsStatus").textContent = `範圍內｜${Math.round(currentDistance)} 公尺`;
           $("confirmPunchBtn").disabled = false;
           $("quickGpsStatus").textContent = `範圍內｜${Math.round(currentDistance)} 公尺`;
-          $("quickConfirmPunchBtn").disabled = false;
+          $("quickConfirmPunchBtn").disabled = !canConfirmQuickPunch();
         } else {
           $("gpsStatus").className = "hint bad";
           $("gpsStatus").textContent = `範圍外｜${Math.round(currentDistance)} 公尺`;
           $("confirmPunchBtn").disabled = false;
           $("quickGpsStatus").textContent = `範圍外｜${Math.round(currentDistance)} 公尺`;
-          $("quickConfirmPunchBtn").disabled = false;
+          $("quickConfirmPunchBtn").disabled = !canConfirmQuickPunch();
         }
       }, error => {
         $("gpsStatus").className = "hint bad";
@@ -1069,17 +1073,13 @@
 
     function openQuickPunchModal() {
       const employee = currentLineEmployee();
-      if (!employee) {
-        $("quickPunchModal").classList.add("hidden");
-        return;
-      }
       $("quickPunchTitle").textContent = `${punchType}打卡`;
-      $("quickEmployeeName").textContent = employee.name || currentProfile.displayName || "未命名員工";
+      $("quickEmployeeName").textContent = employee?.name || (currentProfile.userId ? "讀取員工資料中" : "讀取 LINE 身分中");
       $("quickTimeNow").textContent = nowParts().time;
       $("quickGpsStatus").textContent = currentPosition
         ? `${gpsInRange ? "範圍內" : "範圍外"}｜${Math.round(currentDistance)} 公尺`
         : "定位中...";
-      $("quickConfirmPunchBtn").disabled = !currentPosition || punchSubmitting;
+      $("quickConfirmPunchBtn").disabled = !canConfirmQuickPunch();
       $("quickPunchModal").classList.remove("hidden");
     }
 
@@ -1098,9 +1098,13 @@
     async function confirmPunch() {
       if (punchSubmitting) return;
       if (!currentPosition) return alert("尚未取得 GPS 定位。");
-      const employee = selectedEmployee();
+      const employee = quickPunchRequested ? currentLineEmployee() : selectedEmployee();
+      if (!employee) return alert("尚未確認員工身分，請稍候再試。");
       const actualTime = nowParts().time.slice(0, 5);
       const date = nowParts().date;
+      if (hasActiveClock(employee.lineUserId, date, punchType)) {
+        return alert(`今天已經有${punchType}打卡紀錄，請不要重複打卡。如需調整時間，請聯絡管理者修改。`);
+      }
       const missingClockIn = punchType === "下班" && !hasActiveClock(employee.lineUserId, date, "上班");
       if (missingClockIn && !confirm("今天尚未有上班打卡紀錄。仍要送出下班卡嗎？送出後請記得申請補上班卡，工時才會計算。")) return;
       punchSubmitting = true;
@@ -1149,7 +1153,7 @@
         $("confirmPunchBtn").textContent = "確認打卡";
         $("quickConfirmPunchBtn").textContent = "確認打卡";
         if (currentPosition) $("confirmPunchBtn").disabled = false;
-        if (currentPosition) $("quickConfirmPunchBtn").disabled = false;
+        $("quickConfirmPunchBtn").disabled = !canConfirmQuickPunch();
       }
     }
 
