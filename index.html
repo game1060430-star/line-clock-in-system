@@ -846,8 +846,15 @@
       return employees.find(employee => employee.lineUserId === currentProfile.userId) || null;
     }
 
+    function effectiveRole(employee) {
+      if (!employee) return "員工";
+      if (employee.role === "管理者") return "管理者";
+      if (["店長", "管理者", "老闆"].includes(String(employee.name || "").trim())) return "管理者";
+      return "員工";
+    }
+
     function isCurrentUserAdmin() {
-      return currentLineEmployee()?.role === "管理者";
+      return effectiveRole(currentLineEmployee()) === "管理者";
     }
 
     function renderEmployeeSelect() {
@@ -1187,10 +1194,10 @@
         <div class="row">
           <div>
             <strong>${escapeHtml(employee.name)}</strong><br>
-            <small>LINE ID：${escapeHtml(employee.lineUserId || "未綁定")}｜${escapeHtml(employee.status)}｜${escapeHtml(employee.role)}</small>
+            <small>LINE ID：${escapeHtml(employee.lineUserId || "未綁定")}｜${escapeHtml(employee.status)}｜${escapeHtml(effectiveRole(employee))}</small>
           </div>
           <div class="actions">
-            <button class="btn ${employee.role === "管理者" ? "ghost" : "blue"}" type="button" data-role-index="${index}" data-role-value="${employee.role === "管理者" ? "員工" : "管理者"}">${employee.role === "管理者" ? "改為員工" : "設為管理者"}</button>
+            <button class="btn ${effectiveRole(employee) === "管理者" ? "ghost" : "blue"}" type="button" data-role-index="${index}" data-role-value="${effectiveRole(employee) === "管理者" ? "員工" : "管理者"}">${effectiveRole(employee) === "管理者" ? "改為員工" : "設為管理者"}</button>
             <button class="btn red" type="button" data-delete-employee="${escapeHtml(employee.lineUserId)}">停用</button>
           </div>
         </div>
