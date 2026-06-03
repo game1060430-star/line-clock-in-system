@@ -1,38 +1,29 @@
 const SPREADSHEET_ID = '';
+const TZ = 'Asia/Taipei';
 
 const SHEETS = {
-  SETTINGS: '設定',
-  EMPLOYEES: '員工',
-  WEEKLY_SCHEDULES: '每週固定班',
-  SCHEDULES: '每日排班',
-  REQUESTS: '排班申請',
-  SHIFTS: '班別',
-  RAW: '打卡明細',
-  DAILY: '每日出勤'
+  EMPLOYEES: 'Employees',
+  LOGS: 'Attendance_Logs',
+  REQUESTS: 'Correction_Requests'
 };
 
 const HEADERS = {
-  [SHEETS.SETTINGS]: ['key', 'value'],
-  [SHEETS.EMPLOYEES]: ['id', 'name', 'hourlyRate', 'workStart', 'workEnd', 'inGrace', 'outGrace', 'breakMinutes', 'lineUserId', 'active'],
-  [SHEETS.WEEKLY_SCHEDULES]: ['id', 'employeeId', 'weekday', 'start', 'end', 'inGrace', 'outGrace', 'breakMinutes', 'note', 'active'],
-  [SHEETS.SCHEDULES]: ['id', 'date', 'employeeId', 'type', 'start', 'end', 'inGrace', 'outGrace', 'breakMinutes', 'note', 'active'],
-  [SHEETS.REQUESTS]: ['id', 'date', 'employeeId', 'employeeName', 'lineUserId', 'type', 'start', 'end', 'punchType', 'punchTime', 'reason', 'status', 'adminNote', 'createdAt', 'reviewedAt', 'active'],
-  [SHEETS.SHIFTS]: ['id', 'name', 'start', 'end', 'inGrace', 'outGrace', 'breakMinutes', 'active'],
-  [SHEETS.RAW]: ['id', 'date', 'employeeId', 'employeeName', 'lineUserId', 'type', 'actualTime', 'countedTime', 'shiftId', 'shiftName', 'clockStatus', 'locationStatus', 'distance', 'locationText', 'note', 'createdAt'],
-  [SHEETS.DAILY]: ['dailyKey', 'date', 'employeeId', 'employeeName', 'lineUserId', 'shiftId', 'shiftName', 'inActual', 'inCounted', 'inStatus', 'outActual', 'outCounted', 'outStatus', 'locationStatus', 'distance', 'note', 'hours', 'pay', 'updatedAt']
+  [SHEETS.EMPLOYEES]: ['LINE ID', '員工姓名', '狀態(啟用/停用)'],
+  [SHEETS.LOGS]: ['LINE ID', '員工姓名', '日期', '實際打卡時間', '系統修正時間(30分單位)', '打卡類型(上班/下班)', '備註/來源(正常打卡/管理者補卡)'],
+  [SHEETS.REQUESTS]: ['申請ID', 'LINE ID', '員工姓名', '日期', '類型(上班/下班)', '員工自述時間', '原因備註', '狀態(待審核/已核准/已拒絕)']
 };
 
 const DEFAULT_SETTINGS = {
-  siteName: '總店',
+  siteName: '店面',
   latitude: '25.033964',
   longitude: '121.564468',
-  radiusMeters: '200',
+  radiusMeters: '100',
   adminPin: '1234'
 };
 
 function doGet() {
   setup();
-  return jsonOutput({ ok: true, message: 'LINE clock-in API is ready.' });
+  return jsonOutput({ ok: true, message: 'LINE GPS clock API is ready.' });
 }
 
 function doPost(e) {
@@ -43,17 +34,12 @@ function doPost(e) {
     const payload = body.payload || {};
     if (action === 'getBootstrap') return jsonOutput({ ok: true, payload: getBootstrap() });
     if (action === 'clock') return jsonOutput({ ok: true, payload: saveClock(payload) });
+    if (action === 'getMonthlySummary') return jsonOutput({ ok: true, payload: getMonthlySummary(payload.lineUserId, payload.month) });
     if (action === 'saveSettings') return jsonOutput({ ok: true, payload: saveSettings(payload) });
     if (action === 'saveEmployee') return jsonOutput({ ok: true, payload: saveEmployee(payload) });
-    if (action === 'deleteEmployee') return jsonOutput({ ok: true, payload: setActive(SHEETS.EMPLOYEES, payload.id, false) });
-    if (action === 'saveWeeklySchedule') return jsonOutput({ ok: true, payload: saveWeeklySchedule(payload) });
-    if (action === 'deleteWeeklySchedule') return jsonOutput({ ok: true, payload: setActive(SHEETS.WEEKLY_SCHEDULES, payload.id, false) });
-    if (action === 'saveSchedule') return jsonOutput({ ok: true, payload: saveSchedule(payload) });
-    if (action === 'deleteSchedule') return jsonOutput({ ok: true, payload: setActive(SHEETS.SCHEDULES, payload.id, false) });
-    if (action === 'saveRequest') return jsonOutput({ ok: true, payload: saveRequest(payload) });
-    if (action === 'reviewRequest') return jsonOutput({ ok: true, payload: reviewRequest(payload) });
-    if (action === 'saveShift') return jsonOutput({ ok: true, payload: saveShift(payload) });
-    if (action === 'deleteShift') return jsonOutput({ ok: true, payload: setActive(SHEETS.SHIFTS, payload.id, false) });
+    if (action === 'deleteEmployee') return jsonOutput({ ok: true, payload: setEmployeeStatus(payload.lineUserId, '停用') });
+    if (action === 'saveCorrectionRequest') return jsonOutput({ ok: true, payload: saveCorrectionRequest(payload) });
+    if (action === 'reviewCorrectionRequest') return jsonOutput({ ok: true, payload: reviewCorrectionRequest(payload) });
     return jsonOutput({ ok: false, error: 'Unknown action: ' + action });
   } catch (error) {
     return jsonOutput({ ok: false, error: String(error && error.message ? error.message : error) });
@@ -62,189 +48,184 @@ function doPost(e) {
 
 function setup() {
   Object.keys(HEADERS).forEach(name => ensureSheet(name, HEADERS[name]));
-  seedDefaults();
-}
-
-function ensureSheet(name, headers) {
-  const ss = getSpreadsheet();
-  let sheet = ss.getSheetByName(name);
-  if (!sheet) sheet = ss.insertSheet(name);
-  const lastColumn = Math.max(sheet.getLastColumn(), 1);
-  const firstRow = sheet.getRange(1, 1, 1, lastColumn).getValues()[0].filter(String);
-  if (firstRow.length === 0) {
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    sheet.setFrozenRows(1);
-    return sheet;
+  const employees = rowsAsObjects(SHEETS.EMPLOYEES);
+  if (employees.length === 0) {
+    appendObject(SHEETS.EMPLOYEES, { 'LINE ID': '', '員工姓名': '測試員工', '狀態(啟用/停用)': '啟用' });
   }
-  const needsRewrite = headers.some((header, index) => firstRow[index] !== header) || firstRow.length !== headers.length;
-  if (needsRewrite) {
-    const values = sheet.getDataRange().getValues();
-    const oldHeaders = values[0].filter(String);
-    const data = values.slice(1).map(row => {
-      const object = rowToObject(oldHeaders, row);
-      return headers.map(header => object[header] === undefined ? '' : object[header]);
-    });
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    if (data.length > 0) sheet.getRange(2, 1, data.length, headers.length).setValues(data);
-    if (sheet.getLastColumn() > headers.length) {
-      sheet.deleteColumns(headers.length + 1, sheet.getLastColumn() - headers.length);
-    }
-    sheet.setFrozenRows(1);
-  }
-  return sheet;
-}
-
-function seedDefaults() {
-  const settings = readSettings();
-  Object.keys(DEFAULT_SETTINGS).forEach(key => {
-    if (settings[key] === undefined || settings[key] === '') writeSetting(key, DEFAULT_SETTINGS[key]);
-  });
-  if (rowsAsObjects(SHEETS.EMPLOYEES).length === 0) {
-    appendObject(SHEETS.EMPLOYEES, { id: 'emp-1', name: '測試員工', hourlyRate: 190, workStart: '06:30', workEnd: '14:30', inGrace: 15, outGrace: 15, breakMinutes: 0, lineUserId: '', active: true });
-    appendObject(SHEETS.EMPLOYEES, { id: 'emp-2', name: '店長', hourlyRate: 220, workStart: '06:30', workEnd: '14:30', inGrace: 15, outGrace: 15, breakMinutes: 0, lineUserId: '', active: true });
-  }
-  if (rowsAsObjects(SHEETS.SHIFTS).length === 0) {
-    appendObject(SHEETS.SHIFTS, { id: 'shift-morning', name: '早班', start: '06:30', end: '14:30', inGrace: 15, outGrace: 15, breakMinutes: 0, active: true });
-    appendObject(SHEETS.SHIFTS, { id: 'shift-evening', name: '晚班', start: '14:30', end: '22:30', inGrace: 15, outGrace: 15, breakMinutes: 0, active: true });
-  }
+  seedSettings();
 }
 
 function getBootstrap() {
+  const logs = rowsAsObjects(SHEETS.LOGS);
   return {
     settings: readSettings(),
-    employees: rowsAsObjects(SHEETS.EMPLOYEES).filter(row => String(row.active) !== 'false'),
-    weeklySchedules: rowsAsObjects(SHEETS.WEEKLY_SCHEDULES).filter(row => String(row.active) !== 'false'),
-    schedules: rowsAsObjects(SHEETS.SCHEDULES).filter(row => String(row.active) !== 'false'),
-    requests: rowsAsObjects(SHEETS.REQUESTS).filter(row => String(row.active) !== 'false'),
-    shifts: rowsAsObjects(SHEETS.SHIFTS).filter(row => String(row.active) !== 'false'),
-    records: rowsAsObjects(SHEETS.DAILY)
+    employees: rowsAsObjects(SHEETS.EMPLOYEES).filter(row => row['狀態(啟用/停用)'] !== '停用'),
+    requests: rowsAsObjects(SHEETS.REQUESTS),
+    logs: logs,
+    summaries: monthlySummaries(logs)
   };
 }
 
-function saveClock(record) {
+function saveClock(payload) {
   const now = new Date();
-  const id = record.id || Utilities.getUuid();
-  const raw = Object.assign({}, record, { id: id, createdAt: now.toISOString() });
-  appendObject(SHEETS.RAW, raw);
-
-  const employees = rowsAsObjects(SHEETS.EMPLOYEES);
-  const employee = employees.find(item => item.id === record.employeeId) || {};
-  const shift = employeeSchedule(employee, record);
-  const daily = upsertDaily(record, employee, shift, now);
-  return daily;
+  const actualTime = normalizeTime(payload.actualTime) || formatTime(now);
+  const date = normalizeDate(payload.date) || formatDate(now);
+  const type = normalizeType(payload.type);
+  const lineUserId = payload.lineUserId || '';
+  const employee = findEmployee(lineUserId) || {};
+  const employeeName = payload.employeeName || employee['員工姓名'] || payload.displayName || '';
+  const roundedTime = roundToNearestHalfHour(actualTime);
+  const source = payload.source || '正常打卡';
+  const noteParts = [source, payload.locationStatus, payload.distance !== undefined && payload.distance !== '' ? ('距離 ' + payload.distance + ' 公尺') : '', payload.note || ''].filter(Boolean);
+  const row = {
+    'LINE ID': lineUserId,
+    '員工姓名': employeeName,
+    '日期': date,
+    '實際打卡時間': actualTime,
+    '系統修正時間(30分單位)': roundedTime,
+    '打卡類型(上班/下班)': type,
+    '備註/來源(正常打卡/管理者補卡)': noteParts.join('；')
+  };
+  appendObject(SHEETS.LOGS, row);
+  return Object.assign({}, row, { monthlySummary: getMonthlySummary(lineUserId, date.slice(0, 7)) });
 }
 
-function upsertDaily(record, employee, shift, now) {
-  const dailyKey = [record.date, record.employeeId].join('|');
-  const sheet = getSpreadsheet().getSheetByName(SHEETS.DAILY);
-  const headers = HEADERS[SHEETS.DAILY];
-  const rows = sheet.getDataRange().getValues();
-  let rowNumber = -1;
-  let daily = {
-    dailyKey: dailyKey,
-    date: record.date,
-    employeeId: record.employeeId,
-    employeeName: record.employeeName,
-    lineUserId: record.lineUserId,
-    shiftId: shift.id || record.shiftId,
-    shiftName: shift.name || record.shiftName,
-    inActual: '',
-    inCounted: '',
-    inStatus: '',
-    outActual: '',
-    outCounted: '',
-    outStatus: '',
-    locationStatus: record.locationStatus,
-    distance: record.distance,
-    note: record.note,
-    hours: 0,
-    pay: 0,
-    updatedAt: now.toISOString()
+function saveCorrectionRequest(payload) {
+  const lineUserId = payload.lineUserId || '';
+  const employee = findEmployee(lineUserId) || {};
+  const row = {
+    '申請ID': payload.requestId || Utilities.getUuid(),
+    'LINE ID': lineUserId,
+    '員工姓名': payload.employeeName || employee['員工姓名'] || '',
+    '日期': normalizeDate(payload.date),
+    '類型(上班/下班)': normalizeType(payload.type),
+    '員工自述時間': normalizeTime(payload.claimedTime),
+    '原因備註': payload.reason || '',
+    '狀態(待審核/已核准/已拒絕)': '待審核'
   };
+  appendObject(SHEETS.REQUESTS, row);
+  return row;
+}
 
+function reviewCorrectionRequest(payload) {
+  const requestId = payload.requestId;
+  const status = payload.status === 'approved' ? '已核准' : '已拒絕';
+  const sheet = getSpreadsheet().getSheetByName(SHEETS.REQUESTS);
+  const rows = sheet.getDataRange().getValues();
+  const headers = HEADERS[SHEETS.REQUESTS];
+  const idIndex = headers.indexOf('申請ID');
+  const statusIndex = headers.indexOf('狀態(待審核/已核准/已拒絕)');
+  let request = null;
   for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === dailyKey) {
-      rowNumber = i + 1;
-      daily = rowToObject(headers, rows[i]);
+    if (rows[i][idIndex] === requestId) {
+      request = rowToObject(headers, rows[i]);
+      sheet.getRange(i + 1, statusIndex + 1).setValue(status);
       break;
     }
   }
-
-  daily.employeeName = record.employeeName || daily.employeeName;
-  daily.lineUserId = record.lineUserId || daily.lineUserId;
-  daily.shiftId = shift.id || daily.shiftId || record.shiftId;
-  daily.shiftName = shift.name || daily.shiftName || record.shiftName;
-  if (record.type === 'in') {
-    daily.inActual = record.actualTime;
-    daily.inCounted = record.countedTime;
-    daily.inStatus = record.clockStatus;
-  } else {
-    daily.outActual = record.actualTime;
-    daily.outCounted = record.countedTime;
-    daily.outStatus = record.clockStatus;
+  if (!request) throw new Error('Request not found');
+  if (status === '已核准') {
+    saveClock({
+      lineUserId: request['LINE ID'],
+      employeeName: request['員工姓名'],
+      date: request['日期'],
+      type: request['類型(上班/下班)'],
+      actualTime: payload.finalTime || request['員工自述時間'],
+      source: '管理者補卡',
+      note: request['原因備註']
+    });
   }
-  daily.locationStatus = record.locationStatus || daily.locationStatus;
-  daily.distance = record.distance === null || record.distance === undefined ? daily.distance : record.distance;
-  daily.note = record.note || daily.note;
-  daily.updatedAt = now.toISOString();
-
-  const result = calculateHoursAndPay(daily, employee, shift);
-  daily.hours = result.hours;
-  daily.pay = result.pay;
-
-  const values = [headers.map(header => daily[header] === undefined ? '' : daily[header])];
-  if (rowNumber > 0) {
-    sheet.getRange(rowNumber, 1, 1, headers.length).setValues(values);
-  } else {
-    sheet.appendRow(values[0]);
-  }
-  return daily;
+  return Object.assign({}, request, { '狀態(待審核/已核准/已拒絕)': status });
 }
 
-function calculateHoursAndPay(daily, employee, shift) {
-  if (!daily.inCounted || !daily.outCounted) return { hours: 0, pay: 0 };
-  let start = minutesOfDay(daily.inCounted);
-  let end = minutesOfDay(daily.outCounted);
-  if (end < start) end += 1440;
-  const breakMinutes = Number(shift.breakMinutes || 0);
-  const minutes = Math.max(0, end - start - breakMinutes);
-  const hours = Math.round((minutes / 60) * 100) / 100;
-  const pay = Math.round(hours * Number(employee.hourlyRate || 0));
-  return { hours: hours, pay: pay };
-}
-
-function employeeSchedule(employee, record) {
-  const schedules = rowsAsObjects(SHEETS.SCHEDULES);
-  const daily = schedules.find(schedule =>
-    String(schedule.active) !== 'false' &&
-    schedule.employeeId === employee.id &&
-    schedule.date === record.date
+function getMonthlySummary(lineUserId, month) {
+  const targetMonth = month || formatDate(new Date()).slice(0, 7);
+  const logs = rowsAsObjects(SHEETS.LOGS).filter(row =>
+    row['LINE ID'] === lineUserId &&
+    normalizeDate(row['日期']).slice(0, 7) === targetMonth
   );
-  const weeklySchedules = rowsAsObjects(SHEETS.WEEKLY_SCHEDULES);
-  const weekly = daily ? null : weeklySchedules.find(schedule =>
-    String(schedule.active) !== 'false' &&
-    schedule.employeeId === employee.id &&
-    Number(schedule.weekday) === weekdayOf(record.date)
-  );
-  const schedule = daily || weekly;
-  return {
-    id: schedule ? ('schedule-' + schedule.id) : (record.shiftId || ('employee-' + (employee.id || 'unknown'))),
-    name: daily && daily.type === 'leave' ? '請假' : (daily ? '每日排班' : (weekly ? '每週固定班' : (record.shiftName || ((employee.name || '員工') + ' 個人時段')))),
-    type: schedule ? (schedule.type || 'work') : 'work',
-    start: schedule ? (schedule.start || '06:30') : (employee.workStart || '06:30'),
-    end: schedule ? (schedule.end || '14:30') : (employee.workEnd || '14:30'),
-    inGrace: Number(schedule ? (schedule.inGrace || 15) : (employee.inGrace || 15)),
-    outGrace: Number(schedule ? (schedule.outGrace || 15) : (employee.outGrace || 15)),
-    breakMinutes: Number(schedule ? (schedule.breakMinutes || 0) : (employee.breakMinutes || 0))
-  };
+  return calculateSummary(logs, targetMonth);
 }
 
-function weekdayOf(dateText) {
-  return new Date(dateText + 'T00:00:00').getDay();
+function monthlySummaries(logs) {
+  const byKey = {};
+  logs.forEach(log => {
+    const date = normalizeDate(log['日期']);
+    const key = [log['LINE ID'], date.slice(0, 7)].join('|');
+    if (!byKey[key]) byKey[key] = [];
+    byKey[key].push(log);
+  });
+  return Object.keys(byKey).map(key => {
+    const parts = key.split('|');
+    const summary = calculateSummary(byKey[key], parts[1]);
+    return Object.assign({ lineUserId: parts[0], month: parts[1] }, summary);
+  });
+}
+
+function calculateSummary(logs, month) {
+  const byDate = {};
+  logs.forEach(log => {
+    const date = normalizeDate(log['日期']);
+    if (!byDate[date]) byDate[date] = [];
+    byDate[date].push(log);
+  });
+  let totalHours = 0;
+  const days = [];
+  Object.keys(byDate).sort().forEach(date => {
+    const records = byDate[date];
+    const ins = records.filter(row => normalizeType(row['打卡類型(上班/下班)']) === '上班').map(row => minutesOfDay(row['系統修正時間(30分單位)']));
+    const outs = records.filter(row => normalizeType(row['打卡類型(上班/下班)']) === '下班').map(row => minutesOfDay(row['系統修正時間(30分單位)']));
+    if (ins.length === 0 || outs.length === 0) {
+      days.push({ date: date, hours: 0, status: '缺卡' });
+      return;
+    }
+    const start = Math.min.apply(null, ins);
+    let end = Math.max.apply(null, outs);
+    if (end < start) end += 1440;
+    const hours = Math.round(((end - start) / 60) * 10) / 10;
+    totalHours += hours;
+    days.push({ date: date, hours: hours, status: '完成' });
+  });
+  return { month: month, totalHours: Math.round(totalHours * 10) / 10, workDays: days.filter(day => day.hours > 0).length };
+}
+
+function roundToNearestHalfHour(timeText) {
+  const minutes = minutesOfDay(timeText);
+  const rounded = Math.floor((minutes + 14) / 30) * 30;
+  return timeFromMinutes(rounded);
+}
+
+function normalizeType(type) {
+  const text = String(type || '').toLowerCase();
+  if (text === 'on' || text === 'in' || text === '上班') return '上班';
+  if (text === 'off' || text === 'out' || text === '下班') return '下班';
+  return type || '上班';
+}
+
+function normalizeDate(value) {
+  if (!value) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') return formatDate(value);
+  const text = String(value);
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return match[1] + '-' + match[2] + '-' + match[3];
+  const parsed = new Date(text);
+  if (!isNaN(parsed.getTime())) return formatDate(parsed);
+  return text;
+}
+
+function normalizeTime(value) {
+  if (!value) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]') return formatTime(value);
+  const text = String(value);
+  const plain = text.match(/^(\d{1,2}):(\d{2})/);
+  if (plain) return String(Number(plain[1])).padStart(2, '0') + ':' + plain[2];
+  const iso = text.match(/T(\d{2}):(\d{2})/);
+  if (iso) return iso[1] + ':' + iso[2];
+  return text;
 }
 
 function minutesOfDay(timeText) {
-  const parts = String(timeText || '00:00').split(':').map(Number);
+  const parts = normalizeTime(timeText).split(':').map(Number);
   return (parts[0] || 0) * 60 + (parts[1] || 0);
 }
 
@@ -255,249 +236,105 @@ function timeFromMinutes(minutes) {
   return h + ':' + m;
 }
 
-function judgeClock(type, actualTime, shift) {
-  const actual = minutesOfDay(actualTime);
-  const scheduled = minutesOfDay(type === 'in' ? shift.start : shift.end);
-  const grace = Number(type === 'in' ? shift.inGrace : shift.outGrace) || 0;
-  if (actual >= scheduled - grace && actual <= scheduled + grace) {
-    return { status: '準時', countedTime: timeFromMinutes(scheduled) };
+function formatDate(date) {
+  return Utilities.formatDate(date, TZ, 'yyyy-MM-dd');
+}
+
+function formatTime(date) {
+  return Utilities.formatDate(date, TZ, 'HH:mm');
+}
+
+function saveEmployee(payload) {
+  const row = {
+    'LINE ID': payload.lineUserId || payload['LINE ID'] || '',
+    '員工姓名': payload.name || payload.employeeName || payload['員工姓名'] || '',
+    '狀態(啟用/停用)': payload.status || payload['狀態(啟用/停用)'] || '啟用'
+  };
+  if (!row['員工姓名']) throw new Error('Employee name is required');
+  upsertEmployee(row);
+  return row;
+}
+
+function setEmployeeStatus(lineUserId, status) {
+  const sheet = getSpreadsheet().getSheetByName(SHEETS.EMPLOYEES);
+  const rows = sheet.getDataRange().getValues();
+  const headers = HEADERS[SHEETS.EMPLOYEES];
+  const lineIndex = headers.indexOf('LINE ID');
+  const statusIndex = headers.indexOf('狀態(啟用/停用)');
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][lineIndex] === lineUserId) {
+      sheet.getRange(i + 1, statusIndex + 1).setValue(status);
+      return { lineUserId: lineUserId, status: status };
+    }
   }
-  if (type === 'in') {
-    return actual > scheduled + grace
-      ? { status: '遲到', countedTime: timeFromMinutes(actual) }
-      : { status: '提早', countedTime: timeFromMinutes(scheduled) };
+  return { lineUserId: lineUserId, status: status };
+}
+
+function findEmployee(lineUserId) {
+  return rowsAsObjects(SHEETS.EMPLOYEES).find(row => row['LINE ID'] === lineUserId && row['狀態(啟用/停用)'] !== '停用');
+}
+
+function upsertEmployee(row) {
+  const sheet = getSpreadsheet().getSheetByName(SHEETS.EMPLOYEES);
+  const headers = HEADERS[SHEETS.EMPLOYEES];
+  const rows = sheet.getDataRange().getValues();
+  const lineIndex = headers.indexOf('LINE ID');
+  const nameIndex = headers.indexOf('員工姓名');
+  for (let i = 1; i < rows.length; i++) {
+    if ((row['LINE ID'] && rows[i][lineIndex] === row['LINE ID']) || (!row['LINE ID'] && rows[i][nameIndex] === row['員工姓名'])) {
+      sheet.getRange(i + 1, 1, 1, headers.length).setValues([headers.map(header => row[header] || '')]);
+      return row;
+    }
   }
-  return actual < scheduled - grace
-    ? { status: '早退', countedTime: timeFromMinutes(actual) }
-    : { status: '延後', countedTime: timeFromMinutes(actual) };
+  appendObject(SHEETS.EMPLOYEES, row);
+  return row;
 }
 
 function saveSettings(settings) {
-  ['siteName', 'latitude', 'longitude', 'radiusMeters', 'adminPin'].forEach(key => {
-    if (settings[key] !== undefined) writeSetting(key, settings[key]);
+  const props = PropertiesService.getScriptProperties();
+  Object.keys(DEFAULT_SETTINGS).forEach(key => {
+    if (settings[key] !== undefined) props.setProperty(key, String(settings[key]));
   });
   return readSettings();
 }
 
-function saveEmployee(employee) {
-  const row = {
-    id: employee.id || Utilities.getUuid(),
-    name: employee.name || '',
-    hourlyRate: Number(employee.hourlyRate || 0),
-    workStart: employee.workStart || '06:30',
-    workEnd: employee.workEnd || '14:30',
-    inGrace: Number(employee.inGrace || 15),
-    outGrace: Number(employee.outGrace || 15),
-    breakMinutes: Number(employee.breakMinutes || 0),
-    lineUserId: employee.lineUserId || '',
-    active: true
-  };
-  upsertById(SHEETS.EMPLOYEES, row);
-  return row;
-}
-
-function saveSchedule(schedule) {
-  const row = {
-    id: schedule.id || Utilities.getUuid(),
-    date: schedule.date || '',
-    employeeId: schedule.employeeId || '',
-    type: schedule.type || 'work',
-    start: schedule.type === 'leave' ? '' : (schedule.start || '06:30'),
-    end: schedule.type === 'leave' ? '' : (schedule.end || '14:30'),
-    inGrace: Number(schedule.inGrace || 15),
-    outGrace: Number(schedule.outGrace || 15),
-    breakMinutes: Number(schedule.breakMinutes || 0),
-    note: schedule.note || '',
-    active: true
-  };
-  const existing = rowsAsObjects(SHEETS.SCHEDULES).find(item =>
-    String(item.active) !== 'false' &&
-    item.employeeId === row.employeeId &&
-    item.date === row.date
-  );
-  if (existing && existing.id) row.id = existing.id;
-  upsertById(SHEETS.SCHEDULES, row);
-  return row;
-}
-
-function saveWeeklySchedule(schedule) {
-  const row = {
-    id: schedule.id || Utilities.getUuid(),
-    employeeId: schedule.employeeId || '',
-    weekday: Number(schedule.weekday || 0),
-    start: schedule.start || '06:30',
-    end: schedule.end || '13:30',
-    inGrace: Number(schedule.inGrace || 15),
-    outGrace: Number(schedule.outGrace || 15),
-    breakMinutes: Number(schedule.breakMinutes || 0),
-    note: schedule.note || '',
-    active: true
-  };
-  const existing = rowsAsObjects(SHEETS.WEEKLY_SCHEDULES).find(item =>
-    String(item.active) !== 'false' &&
-    item.employeeId === row.employeeId &&
-    Number(item.weekday) === row.weekday
-  );
-  if (existing && existing.id) row.id = existing.id;
-  upsertById(SHEETS.WEEKLY_SCHEDULES, row);
-  return row;
-}
-
-function saveRequest(request) {
-  const row = {
-    id: request.id || Utilities.getUuid(),
-    date: request.date || '',
-    employeeId: request.employeeId || '',
-    employeeName: request.employeeName || '',
-    lineUserId: request.lineUserId || '',
-    type: request.type || 'leave',
-    start: request.start || '',
-    end: request.end || '',
-    punchType: request.punchType || '',
-    punchTime: request.punchTime || '',
-    reason: request.reason || '',
-    status: request.status || 'pending',
-    adminNote: request.adminNote || '',
-    createdAt: request.createdAt || new Date().toISOString(),
-    reviewedAt: request.reviewedAt || '',
-    active: true
-  };
-  upsertById(SHEETS.REQUESTS, row);
-  return row;
-}
-
-function reviewRequest(payload) {
-  const id = payload.id;
-  const status = payload.status || 'pending';
-  const requests = rowsAsObjects(SHEETS.REQUESTS);
-  const request = requests.find(item => item.id === id);
-  if (!request) throw new Error('Request not found');
-  request.status = status;
-  request.adminNote = payload.adminNote || request.adminNote || '';
-  request.reviewedAt = new Date().toISOString();
-  request.active = true;
-  upsertById(SHEETS.REQUESTS, request);
-  if (status === 'approved') {
-    const employees = rowsAsObjects(SHEETS.EMPLOYEES);
-    const employee = employees.find(item => item.id === request.employeeId) || {};
-    if (request.type === 'punch') {
-      const shift = employeeSchedule(employee, request);
-      const punchType = request.punchType || 'in';
-      const judge = judgeClock(punchType, request.punchTime, shift);
-      saveClock({
-        id: 'approved-' + request.id,
-        date: request.date,
-        employeeId: request.employeeId,
-        employeeName: request.employeeName || employee.name,
-        lineUserId: request.lineUserId || employee.lineUserId || '',
-        type: punchType,
-        actualTime: request.punchTime,
-        countedTime: judge.countedTime,
-        shiftId: shift.id,
-        shiftName: shift.name,
-        clockStatus: judge.status,
-        locationStatus: '範圍內',
-        distance: '',
-        locationText: '補卡審核',
-        note: '補卡核准：' + (request.reason || '')
-      });
-    } else {
-      saveSchedule({
-        id: 'approved-' + request.id,
-        date: request.date,
-        employeeId: request.employeeId,
-        type: request.type === 'leave' ? 'leave' : 'work',
-        start: request.type === 'leave' ? '' : (request.start || employee.workStart || '06:30'),
-        end: request.type === 'leave' ? '' : (request.end || employee.workEnd || '14:30'),
-        inGrace: employee.inGrace || 15,
-        outGrace: employee.outGrace || 15,
-        breakMinutes: employee.breakMinutes || 0,
-        note: (request.type === 'leave' ? '請假：' : '改班：') + (request.reason || ''),
-        active: true
-      });
-    }
-  }
-  return request;
-}
-
-function saveShift(shift) {
-  const row = {
-    id: shift.id || Utilities.getUuid(),
-    name: shift.name || '',
-    start: shift.start || '06:30',
-    end: shift.end || '14:30',
-    inGrace: Number(shift.inGrace || 0),
-    outGrace: Number(shift.outGrace || 0),
-    breakMinutes: Number(shift.breakMinutes || 0),
-    active: true
-  };
-  upsertById(SHEETS.SHIFTS, row);
-  return row;
-}
-
-function setActive(sheetName, id, active) {
-  const sheet = getSpreadsheet().getSheetByName(sheetName);
-  const headers = HEADERS[sheetName];
-  const rows = sheet.getDataRange().getValues();
-  const idIndex = headers.indexOf('id');
-  const activeIndex = headers.indexOf('active');
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][idIndex] === id) {
-      sheet.getRange(i + 1, activeIndex + 1).setValue(active);
-      return { id: id, active: active };
-    }
-  }
-  return { id: id, active: active };
-}
-
-function upsertById(sheetName, object) {
-  const sheet = getSpreadsheet().getSheetByName(sheetName);
-  const headers = HEADERS[sheetName];
-  const rows = sheet.getDataRange().getValues();
-  const idIndex = headers.indexOf('id');
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][idIndex] === object.id) {
-      sheet.getRange(i + 1, 1, 1, headers.length).setValues([headers.map(header => object[header] === undefined ? '' : object[header])]);
-      return object;
-    }
-  }
-  appendObject(sheetName, object);
-  return object;
-}
-
 function readSettings() {
-  const rows = rowsAsObjects(SHEETS.SETTINGS);
-  return rows.reduce((settings, row) => {
-    settings[row.key] = row.value;
-    return settings;
-  }, {});
+  const props = PropertiesService.getScriptProperties();
+  const result = {};
+  Object.keys(DEFAULT_SETTINGS).forEach(key => {
+    result[key] = props.getProperty(key) || DEFAULT_SETTINGS[key];
+  });
+  return result;
 }
 
-function writeSetting(key, value) {
-  const sheet = getSpreadsheet().getSheetByName(SHEETS.SETTINGS);
-  const rows = sheet.getDataRange().getValues();
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === key) {
-      sheet.getRange(i + 1, 2).setValue(value);
-      return;
-    }
+function seedSettings() {
+  const props = PropertiesService.getScriptProperties();
+  Object.keys(DEFAULT_SETTINGS).forEach(key => {
+    if (!props.getProperty(key)) props.setProperty(key, DEFAULT_SETTINGS[key]);
+  });
+}
+
+function ensureSheet(name, headers) {
+  const ss = getSpreadsheet();
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) sheet = ss.insertSheet(name);
+  const range = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), headers.length));
+  const existing = range.getValues()[0].slice(0, headers.length);
+  const empty = existing.every(cell => cell === '');
+  const mismatch = headers.some((header, index) => existing[index] !== header);
+  if (empty || mismatch) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.setFrozenRows(1);
   }
-  sheet.appendRow([key, value]);
-}
-
-function appendObject(sheetName, object) {
-  const sheet = getSpreadsheet().getSheetByName(sheetName);
-  const headers = HEADERS[sheetName];
-  sheet.appendRow(headers.map(header => object[header] === undefined ? '' : object[header]));
+  return sheet;
 }
 
 function rowsAsObjects(sheetName) {
   const sheet = getSpreadsheet().getSheetByName(sheetName);
-  if (!sheet) return [];
-  const values = sheet.getDataRange().getValues();
-  if (values.length <= 1) return [];
+  if (!sheet || sheet.getLastRow() <= 1) return [];
   const headers = HEADERS[sheetName];
-  return values.slice(1).filter(row => row.some(cell => cell !== '')).map(row => rowToObject(headers, row));
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, headers.length).getValues();
+  return values.filter(row => row.some(cell => cell !== '')).map(row => rowToObject(headers, row));
 }
 
 function rowToObject(headers, row) {
@@ -505,6 +342,12 @@ function rowToObject(headers, row) {
     object[header] = row[index];
     return object;
   }, {});
+}
+
+function appendObject(sheetName, object) {
+  const sheet = getSpreadsheet().getSheetByName(sheetName);
+  const headers = HEADERS[sheetName];
+  sheet.appendRow(headers.map(header => object[header] === undefined ? '' : object[header]));
 }
 
 function getSpreadsheet() {

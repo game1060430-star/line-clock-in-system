@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>LINE 打卡系統</title>
+  <title>LINE GPS 打卡系統</title>
   <style>
     :root {
-      --bg: #f6f7f4;
+      --bg: #f5f7f4;
       --panel: #ffffff;
       --text: #17211b;
-      --muted: #68746d;
-      --line: #dfe5df;
+      --muted: #66736c;
+      --line: #dfe6df;
       --primary: #06c755;
       --primary-dark: #049544;
       --blue: #246f9f;
@@ -22,7 +22,6 @@
       --soft-gray: #eef2ef;
       --shadow: 0 8px 22px rgba(22, 33, 27, 0.08);
     }
-
     * { box-sizing: border-box; }
     html, body { margin: 0; min-height: 100%; overflow-x: hidden; }
     body {
@@ -31,9 +30,9 @@
       font-family: "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif;
       -webkit-font-smoothing: antialiased;
     }
-    button, input, select, textarea { font: inherit; min-width: 0; max-width: 100%; }
+    button, input, select, textarea { font: inherit; max-width: 100%; min-width: 0; }
     button { cursor: pointer; }
-    .app { width: min(1080px, 100%); margin: 0 auto; padding: 12px; }
+    .app { width: min(980px, 100%); margin: 0 auto; padding: 12px; }
     .topbar {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -55,7 +54,7 @@
       flex: 0 0 auto;
     }
     h1, h2, h3, p { margin-top: 0; }
-    h1 { margin-bottom: 2px; font-size: 21px; line-height: 1.2; }
+    h1 { margin: 0 0 2px; font-size: 21px; line-height: 1.2; }
     .subtitle { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
     .profile {
       border: 1px solid var(--line);
@@ -93,15 +92,18 @@
     }
     .hero h2 { margin-bottom: 5px; font-size: 22px; }
     .hero p { margin-bottom: 0; font-size: 13px; line-height: 1.6; color: rgba(255,255,255,0.9); }
-    .main-nav, .admin-nav, .quick-actions {
+    .nav {
       display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      padding: 7px 0;
+      background: var(--bg);
       margin-bottom: 10px;
     }
-    .main-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); position: sticky; top: 0; z-index: 10; padding: 7px 0; background: var(--bg); }
-    .admin-nav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-    .quick-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .tab, .action-card {
+    .tab {
       min-height: 44px;
       border-radius: 8px;
       border: 1px solid var(--line);
@@ -112,13 +114,6 @@
       text-align: center;
     }
     .tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
-    .action-card {
-      min-height: 78px;
-      display: grid;
-      place-items: center;
-      padding: 9px;
-    }
-    .action-card small { display: block; color: var(--muted); font-weight: 700; margin-top: 3px; }
     .panel {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -155,7 +150,7 @@
     }
     .btn {
       border: 0;
-      min-height: 44px;
+      min-height: 46px;
       border-radius: 8px;
       color: #fff;
       font-weight: 900;
@@ -172,29 +167,38 @@
     .btn.red { background: var(--red); }
     .btn.ghost { background: var(--soft-gray); color: var(--text); border: 1px solid var(--line); }
     .btn:disabled { opacity: 0.55; cursor: not-allowed; }
-    .time-card {
+    .clock-face {
       display: grid;
       place-items: center;
-      min-height: 132px;
+      min-height: 138px;
       background: #eef7f1;
       border: 1px solid #d6eadc;
       border-radius: 8px;
       text-align: center;
       padding: 14px;
     }
-    .time-now { font-size: clamp(34px, 9vw, 58px); line-height: 1; font-weight: 900; }
+    .time-now { font-size: clamp(38px, 10vw, 64px); line-height: 1; font-weight: 900; }
     .date-now { color: var(--muted); margin-top: 8px; font-size: 14px; }
-    .notice {
+    .hint {
       border-left: 4px solid var(--primary);
       background: #f0f8f3;
       border-radius: 8px;
       padding: 10px 12px;
       color: #29543b;
-      font-size: 13px;
+      font-size: 14px;
       line-height: 1.55;
     }
-    .notice.warn { border-left-color: var(--amber); background: var(--soft-amber); color: #754514; }
-    .notice.bad { border-left-color: var(--red); background: var(--soft-red); color: #8f2929; }
+    .hint.warn { border-left-color: var(--amber); background: var(--soft-amber); color: #754514; }
+    .hint.bad { border-left-color: var(--red); background: var(--soft-red); color: #8f2929; }
+    .summary-number {
+      border-radius: 8px;
+      background: var(--soft-green);
+      border: 1px solid #9bddb5;
+      padding: 20px 12px;
+      text-align: center;
+    }
+    .summary-number span { display: block; color: var(--muted); font-size: 13px; font-weight: 900; }
+    .summary-number b { display: block; margin-top: 8px; font-size: clamp(36px, 12vw, 72px); color: var(--primary-dark); }
     .stat {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -204,51 +208,6 @@
     }
     .stat span { color: var(--muted); font-size: 12px; font-weight: 900; }
     .stat b { display: block; margin-top: 6px; font-size: 21px; }
-    .calendar-head, .calendar {
-      display: grid;
-      grid-template-columns: repeat(7, minmax(0, 1fr));
-      gap: 5px;
-    }
-    .calendar-head { margin: 10px 0 5px; color: var(--muted); font-size: 12px; font-weight: 900; text-align: center; }
-    .day {
-      min-height: 52px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fbfcfb;
-      display: grid;
-      align-content: center;
-      gap: 2px;
-      padding: 5px 3px;
-      text-align: center;
-      overflow: hidden;
-    }
-    .day b { font-size: 14px; line-height: 1; }
-    .day span { color: var(--muted); font-size: 10px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .day.blank { opacity: 0; pointer-events: none; }
-    .day.ok { background: var(--soft-green); border-color: #9bddb5; color: var(--primary-dark); }
-    .day.warn { background: var(--soft-amber); border-color: #e6bd81; color: var(--amber); }
-    .day.bad { background: var(--soft-red); border-color: #e6aaaa; color: var(--red); }
-    .day.off { background: #f3f5f3; color: var(--muted); }
-    .day.selectable { cursor: pointer; }
-    .day.selected { outline: 3px solid rgba(36, 111, 159, 0.32); border-color: var(--blue); background: #e8f1f8; }
-    .legend { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; color: var(--muted); font-size: 12px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 4px; vertical-align: -1px; }
-    .dot.ok { background: var(--primary); }
-    .dot.warn { background: var(--amber); }
-    .dot.bad { background: var(--red); }
-    .dot.off { background: #bcc7c0; }
-    .record-list, .list { display: grid; gap: 8px; }
-    .record, .list-row {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fff;
-      padding: 10px;
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 8px;
-      align-items: center;
-    }
-    .record small, .list-row small { color: var(--muted); line-height: 1.55; }
     .badge {
       display: inline-flex;
       align-items: center;
@@ -264,22 +223,20 @@
     .badge.ok { background: var(--soft-green); color: var(--primary-dark); }
     .badge.warn { background: var(--soft-amber); color: var(--amber); }
     .badge.bad { background: var(--soft-red); color: var(--red); }
-    .weekday-picker { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
-    .weekday-picker label {
-      position: relative;
-      min-height: 42px;
+    .list { display: grid; gap: 8px; }
+    .row {
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: #fbfcfb;
+      background: #fff;
+      padding: 10px;
       display: grid;
-      place-items: center;
-      margin: 0;
-      color: var(--text);
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
     }
-    .weekday-picker input { position: absolute; opacity: 0; pointer-events: none; }
-    .weekday-picker label:has(input:checked) { background: var(--soft-green); border-color: var(--primary); color: var(--primary-dark); }
+    .row small { color: var(--muted); line-height: 1.55; }
     .table-wrap { overflow-x: auto; }
-    table { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 13px; }
+    table { width: 100%; min-width: 780px; border-collapse: collapse; font-size: 13px; }
     th, td { border-bottom: 1px solid var(--line); padding: 9px 8px; text-align: left; vertical-align: top; }
     th { background: #f0f5f1; color: var(--muted); font-size: 12px; }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -292,39 +249,27 @@
       background: #fbfcfb;
     }
     .hidden { display: none !important; }
-
     @media (max-width: 760px) {
       .app { padding: 8px; }
       .topbar { grid-template-columns: 1fr; }
       .profile { width: 100%; }
       .profile strong, .profile span { white-space: normal; }
-      .hero { padding: 12px; }
-      .hero h2 { font-size: 20px; }
-      .main-nav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-      .admin-nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .quick-actions, .grid, .grid-3 { grid-template-columns: 1fr; }
+      .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid, .grid-3 { grid-template-columns: 1fr; }
       .panel { padding: 10px; }
-      .calendar-head, .calendar { gap: 4px; }
-      .day { min-height: 44px; border-radius: 6px; padding: 4px 2px; }
-      .day b { font-size: 13px; }
-      .day span { font-size: 9px; }
-      .day span.detail { display: none; }
-      .weekday-picker { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .table-wrap { overflow-x: visible; }
       table { min-width: 0; border-collapse: separate; border-spacing: 0 8px; }
       thead { display: none; }
       tbody, tr, td { display: block; width: 100%; }
       tr { border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 8px; }
-      td { border-bottom: 0; padding: 6px 0; display: grid; grid-template-columns: 82px minmax(0, 1fr); gap: 8px; }
+      td { border-bottom: 0; padding: 6px 0; display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 8px; }
       td::before { color: var(--muted); font-size: 12px; font-weight: 900; }
       td:nth-child(1)::before { content: "日期"; }
       td:nth-child(2)::before { content: "員工"; }
-      td:nth-child(3)::before { content: "上班"; }
-      td:nth-child(4)::before { content: "下班"; }
-      td:nth-child(5)::before { content: "狀態"; }
-      td:nth-child(6)::before { content: "工時"; }
-      td:nth-child(7)::before { content: "距離"; }
-      td:nth-child(8)::before { content: "備註"; }
+      td:nth-child(3)::before { content: "類型"; }
+      td:nth-child(4)::before { content: "實際"; }
+      td:nth-child(5)::before { content: "修正"; }
+      td:nth-child(6)::before { content: "備註"; }
     }
   </style>
 </head>
@@ -334,8 +279,8 @@
       <div class="brand">
         <div class="mark">LINE</div>
         <div>
-          <h1>LINE 打卡系統</h1>
-          <p class="subtitle">手機打卡、GPS 範圍、Google Sheet 出勤與排班</p>
+          <h1>LINE GPS 打卡系統</h1>
+          <p class="subtitle">30 分鐘歸整工時，Google Sheet 資料庫</p>
         </div>
       </div>
       <div class="profile">
@@ -348,114 +293,89 @@
     </header>
 
     <section class="hero">
-      <h2 id="heroTitle">員工打卡</h2>
-      <p id="heroText">員工進來只會看到自己的打卡、當月出勤、補卡與請假。管理功能需要 PIN 解鎖。</p>
+      <h2 id="heroTitle">GPS 打卡</h2>
+      <p id="heroText">所有打卡時間會自動歸入最接近的 30 分鐘格子，例如 06:16 至 06:45 會歸入 06:30。</p>
     </section>
 
-    <nav class="main-nav" aria-label="主功能">
-      <button class="tab active" data-page="employee">員工</button>
-      <button class="tab" data-page="request">申請</button>
+    <nav class="nav" aria-label="主功能">
+      <button class="tab active" data-page="punch" data-punch-type="上班">上班打卡</button>
+      <button class="tab" data-page="punch" data-punch-type="下班">下班打卡</button>
+      <button class="tab" data-page="query">工時查詢</button>
       <button class="tab" data-page="admin">管理</button>
     </nav>
 
     <main>
-      <section id="page-employee" class="page">
-        <div id="bindPanel" class="panel hidden">
-          <h3>確認員工身分</h3>
-          <div class="notice warn" style="margin-bottom:10px;">第一次進入時需要把 LINE 帳號綁定到員工。綁定後，員工端不會再出現選擇員工。</div>
+      <section id="page-punch" class="page">
+        <div class="panel">
+          <h3 id="punchTitle">上班打卡</h3>
           <div class="grid">
-            <div>
-              <label for="employeeSelect">選擇你的名字</label>
+            <div class="clock-face span-2">
+              <div>
+                <div id="timeNow" class="time-now">--:--:--</div>
+                <div id="dateNow" class="date-now">讀取日期</div>
+              </div>
+            </div>
+            <div id="browserEmployeeWrap" class="hidden">
+              <label for="employeeSelect">瀏覽器測試員工</label>
               <select id="employeeSelect"></select>
             </div>
             <div>
-              <label>綁定 LINE</label>
-              <button id="bindLineBtn" class="btn blue" type="button">綁定目前 LINE</button>
+              <label>打卡類型</label>
+              <div id="punchTypeLabel" class="hint">上班</div>
             </div>
-          </div>
-        </div>
-
-        <div class="quick-actions">
-          <button class="action-card" type="button" data-quick="clock-in">上班打卡<small>進店後按這裡</small></button>
-          <button class="action-card" type="button" data-quick="clock-out">下班打卡<small>離店前按這裡</small></button>
-          <button class="action-card" type="button" data-quick="request">補卡 / 請假<small>送出給管理者審核</small></button>
-        </div>
-
-        <div class="panel">
-          <div class="time-card">
-            <div>
-              <div id="timeNow" class="time-now">--:--:--</div>
-              <div id="dateNow" class="date-now">讀取日期</div>
+            <div class="span-2">
+              <div id="roundHint" class="hint">系統提示：目前時間將歸入 --:-- 班段。</div>
             </div>
+            <div class="span-2">
+              <div id="gpsStatus" class="hint warn">GPS 定位中...</div>
+            </div>
+            <div class="span-2">
+              <label for="punchNote">備註</label>
+              <textarea id="punchNote" placeholder="特殊狀況再填，例如定位飄移。"></textarea>
+            </div>
+            <button id="confirmPunchBtn" class="btn primary span-2" type="button" disabled>確認打卡</button>
           </div>
-          <div id="employeeStatus" class="notice" style="margin-top:10px;"></div>
-          <div class="grid" style="margin-top:10px;">
-            <button id="primaryClockBtn" class="btn primary" type="button">上班打卡</button>
-            <button id="secondaryClockBtn" class="btn ghost" type="button">申請補卡</button>
-          </div>
-          <div style="margin-top:10px;">
-            <label for="noteInput">備註</label>
-            <textarea id="noteInput" placeholder="有特殊狀況再填，例如 GPS 飄移、臨時支援。"></textarea>
-          </div>
-        </div>
-
-        <div class="panel">
-          <h3>本月出勤</h3>
-          <div class="grid-3">
-            <div class="stat"><span>本月工時</span><b id="employeeHours">0</b></div>
-            <div class="stat"><span>正常天數</span><b id="employeeOk">0</b></div>
-            <div class="stat"><span>異常天數</span><b id="employeeBad">0</b></div>
-          </div>
-          <div class="calendar-head"><div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div></div>
-          <div id="employeeCalendar" class="calendar"></div>
-          <div class="legend">
-            <span><i class="dot ok"></i>正常</span>
-            <span><i class="dot warn"></i>上班中</span>
-            <span><i class="dot bad"></i>異常</span>
-            <span><i class="dot off"></i>休假 / 未排班</span>
-          </div>
-          <div id="employeeDayDetail" class="notice hidden" style="margin-top:10px;"></div>
         </div>
       </section>
 
-      <section id="page-request" class="page hidden">
+      <section id="page-query" class="page hidden">
         <div class="panel">
-          <h3>補卡 / 請假申請</h3>
-          <div id="requestIdentity" class="notice" style="margin-bottom:10px;"></div>
+          <h3>當月總工時</h3>
+          <div id="queryIdentity" class="hint" style="margin-bottom:10px;">讀取員工資料中...</div>
+          <div class="summary-number">
+            <span id="summaryMonth">本月累計總工時</span>
+            <b id="summaryHours">--</b>
+          </div>
+          <div class="grid" style="margin-top:10px;">
+            <button id="refreshSummaryBtn" class="btn blue" type="button">重新整理</button>
+            <button id="openRequestBtn" class="btn amber" type="button">申請補卡 / 漏打卡回報</button>
+          </div>
+        </div>
+
+        <div id="requestPanel" class="panel hidden">
+          <h3>補卡 / 漏打卡回報</h3>
           <div class="grid">
-            <div>
-              <label for="requestType">申請類型</label>
-              <select id="requestType">
-                <option value="punch">補打卡</option>
-                <option value="leave">請假</option>
-              </select>
-            </div>
             <div>
               <label for="requestDate">日期</label>
               <input id="requestDate" type="date">
             </div>
-            <div class="punch-only">
-              <label for="requestPunchType">補哪一張卡</label>
-              <select id="requestPunchType">
-                <option value="in">補上班卡</option>
-                <option value="out">補下班卡</option>
+            <div>
+              <label for="requestType">類型</label>
+              <select id="requestType">
+                <option value="上班">上班</option>
+                <option value="下班">下班</option>
               </select>
             </div>
-            <div class="punch-only">
-              <label for="requestPunchTime">補卡時間</label>
-              <input id="requestPunchTime" type="time" value="06:30">
+            <div>
+              <label for="requestTime">員工自述時間</label>
+              <input id="requestTime" type="time" value="06:30">
             </div>
             <div class="span-2">
-              <label for="requestReason">原因</label>
-              <textarea id="requestReason" placeholder="例如忘記打卡、手機沒電、請病假。"></textarea>
+              <label for="requestReason">原因備註</label>
+              <textarea id="requestReason" placeholder="例如忘記打卡、手機沒電。"></textarea>
             </div>
             <button id="submitRequestBtn" class="btn primary span-2" type="button">送出申請</button>
           </div>
-        </div>
-
-        <div class="panel">
-          <h3>我的申請</h3>
-          <div id="myRequestList" class="list"></div>
         </div>
       </section>
 
@@ -464,8 +384,8 @@
           <h3>管理者登入</h3>
           <div class="grid">
             <div>
-              <label for="adminPinInputLogin">管理 PIN</label>
-              <input id="adminPinInputLogin" type="password" inputmode="numeric" placeholder="輸入管理 PIN">
+              <label for="adminPinLogin">管理 PIN</label>
+              <input id="adminPinLogin" type="password" inputmode="numeric" placeholder="輸入管理 PIN">
             </div>
             <div>
               <label>&nbsp;</label>
@@ -475,448 +395,158 @@
         </div>
 
         <div id="adminArea" class="hidden">
-          <nav class="admin-nav" aria-label="管理功能">
-            <button class="tab active" data-admin-page="dashboard">今日</button>
-            <button class="tab" data-admin-page="records">出勤</button>
-            <button class="tab" data-admin-page="schedule">排班</button>
-            <button class="tab" data-admin-page="people">員工</button>
-            <button class="tab" data-admin-page="settings">設定</button>
-          </nav>
+          <div class="panel">
+            <h3>系統設定</h3>
+            <div class="grid">
+              <div>
+                <label for="siteNameInput">店名</label>
+                <input id="siteNameInput" type="text">
+              </div>
+              <div>
+                <label for="radiusInput">允許半徑（公尺）</label>
+                <input id="radiusInput" type="number" min="10" value="100">
+              </div>
+              <div>
+                <label for="latInput">中心點緯度</label>
+                <input id="latInput" type="number" step="0.000001">
+              </div>
+              <div>
+                <label for="lngInput">中心點經度</label>
+                <input id="lngInput" type="number" step="0.000001">
+              </div>
+              <div>
+                <label for="adminPinInput">管理 PIN</label>
+                <input id="adminPinInput" type="password" inputmode="numeric">
+              </div>
+              <div>
+                <label for="liffIdInput">LIFF ID</label>
+                <input id="liffIdInput" type="text">
+              </div>
+              <div class="span-2">
+                <label for="apiUrlInput">Google Apps Script API URL</label>
+                <input id="apiUrlInput" type="url">
+              </div>
+              <button id="useCurrentLocationBtn" class="btn ghost" type="button">用目前定位設為店址</button>
+              <button id="saveSettingsBtn" class="btn primary" type="button">儲存設定</button>
+            </div>
+          </div>
 
-          <section id="admin-dashboard" class="admin-page">
-            <div class="panel">
-              <h3>今日出勤概況</h3>
-              <div class="grid-3">
-                <div class="stat"><span>應到</span><b id="dueCount">0</b></div>
-                <div class="stat"><span>已到</span><b id="arrivedCount">0</b></div>
-                <div class="stat"><span>異常</span><b id="abnormalCount">0</b></div>
+          <div class="panel">
+            <h3>員工名單</h3>
+            <div class="grid">
+              <div>
+                <label for="employeeLineIdInput">LINE ID</label>
+                <input id="employeeLineIdInput" type="text" placeholder="LINE User ID">
               </div>
+              <div>
+                <label for="employeeNameInput">員工姓名</label>
+                <input id="employeeNameInput" type="text" placeholder="員工姓名">
+              </div>
+              <button id="saveEmployeeBtn" class="btn primary span-2" type="button">儲存員工</button>
             </div>
-            <div class="panel">
-              <h3>即時狀態</h3>
-              <div id="todayFeed" class="record-list"></div>
-            </div>
-            <div class="panel">
-              <h3>待審核</h3>
-              <div id="approvalList" class="list"></div>
-            </div>
-          </section>
+            <div id="employeeList" class="list" style="margin-top:10px;"></div>
+          </div>
 
-          <section id="admin-records" class="admin-page hidden">
-            <div class="panel">
-              <h3>出勤紀錄</h3>
-              <div class="grid">
-                <div>
-                  <label for="filterEmployee">員工</label>
-                  <select id="filterEmployee"></select>
-                </div>
-                <div>
-                  <label for="filterMonth">月份</label>
-                  <input id="filterMonth" type="month">
-                </div>
-              </div>
-              <div class="calendar-head"><div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div></div>
-              <div id="adminCalendar" class="calendar"></div>
-              <div class="legend">
-                <span><i class="dot ok"></i>正常</span>
-                <span><i class="dot warn"></i>上班中</span>
-                <span><i class="dot bad"></i>異常，點日期可補卡</span>
-              </div>
-            </div>
+          <div class="panel">
+            <h3>補卡申請審核</h3>
+            <div id="requestReviewList" class="list"></div>
+          </div>
 
-            <div class="panel">
-              <h3>管理補打卡 / 修改異常</h3>
-              <div class="grid">
-                <div>
-                  <label for="manualEmployee">員工</label>
-                  <select id="manualEmployee"></select>
-                </div>
-                <div>
-                  <label for="manualDate">日期</label>
-                  <input id="manualDate" type="date">
-                </div>
-                <div>
-                  <label for="manualType">類型</label>
-                  <select id="manualType">
-                    <option value="in">上班卡</option>
-                    <option value="out">下班卡</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="manualTime">時間</label>
-                  <input id="manualTime" type="time">
-                </div>
-                <div class="span-2">
-                  <label for="manualNote">備註</label>
-                  <textarea id="manualNote" placeholder="例如審核補卡、修正打卡異常。"></textarea>
-                </div>
-                <button id="manualClockBtn" class="btn amber span-2" type="button">儲存補卡 / 修改</button>
+          <div class="panel">
+            <h3>打卡紀錄</h3>
+            <div class="grid" style="margin-bottom:10px;">
+              <div>
+                <label for="logMonthInput">月份</label>
+                <input id="logMonthInput" type="month">
+              </div>
+              <div>
+                <label>&nbsp;</label>
+                <button id="refreshAdminBtn" class="btn blue" type="button">重新同步</button>
               </div>
             </div>
-
-            <div class="panel">
-              <div class="actions" style="justify-content:space-between; margin-bottom:10px;">
-                <h3 style="margin:0;">明細表</h3>
-                <button id="exportCsvBtn" class="btn ghost" type="button">匯出 CSV</button>
-              </div>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr><th>日期</th><th>員工</th><th>上班</th><th>下班</th><th>狀態</th><th>工時</th><th>距離</th><th>備註</th></tr>
-                  </thead>
-                  <tbody id="recordTable"></tbody>
-                </table>
-              </div>
+            <div class="grid-3" style="margin-bottom:10px;">
+              <div class="stat"><span>本月員工數</span><b id="adminEmployeeCount">0</b></div>
+              <div class="stat"><span>本月打卡筆數</span><b id="adminLogCount">0</b></div>
+              <div class="stat"><span>待審核</span><b id="adminPendingCount">0</b></div>
             </div>
-          </section>
-
-          <section id="admin-schedule" class="admin-page hidden">
-            <div class="panel">
-              <h3>每週固定班</h3>
-              <div class="grid">
-                <div>
-                  <label for="weeklyEmployee">員工</label>
-                  <select id="weeklyEmployee"></select>
-                </div>
-                <div>
-                  <label>星期</label>
-                  <div id="weeklyDays" class="weekday-picker">
-                    <label><input type="checkbox" value="0">日</label>
-                    <label><input type="checkbox" value="1">一</label>
-                    <label><input type="checkbox" value="2">二</label>
-                    <label><input type="checkbox" value="3">三</label>
-                    <label><input type="checkbox" value="4">四</label>
-                    <label><input type="checkbox" value="5">五</label>
-                    <label><input type="checkbox" value="6">六</label>
-                  </div>
-                </div>
-                <div>
-                  <label for="weeklyStart">上班</label>
-                  <input id="weeklyStart" type="time" value="06:30">
-                </div>
-                <div>
-                  <label for="weeklyEnd">下班</label>
-                  <input id="weeklyEnd" type="time" value="13:30">
-                </div>
-                <div>
-                  <label for="weeklyInGrace">上班容許分鐘</label>
-                  <input id="weeklyInGrace" type="number" value="15" min="0">
-                </div>
-                <div>
-                  <label for="weeklyOutGrace">下班容許分鐘</label>
-                  <input id="weeklyOutGrace" type="number" value="15" min="0">
-                </div>
-                <div>
-                  <label for="weeklyBreak">休息分鐘</label>
-                  <input id="weeklyBreak" type="number" value="0" min="0">
-                </div>
-                <div>
-                  <label for="weeklyNote">備註</label>
-                  <input id="weeklyNote" type="text" placeholder="例如固定早班">
-                </div>
-                <button id="saveWeeklyScheduleBtn" class="btn primary span-2" type="button">儲存固定班</button>
-              </div>
-              <div id="weeklyScheduleList" class="list" style="margin-top:10px;"></div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>日期</th><th>員工</th><th>類型</th><th>實際</th><th>修正</th><th>備註</th></tr>
+                </thead>
+                <tbody id="logTable"></tbody>
+              </table>
             </div>
-
-            <div class="panel">
-              <h3>單日排班</h3>
-              <div class="grid">
-                <div>
-                  <label for="scheduleEmployee">員工</label>
-                  <select id="scheduleEmployee"></select>
-                </div>
-                <div>
-                  <label for="scheduleMonth">月份</label>
-                  <input id="scheduleMonth" type="month">
-                </div>
-                <div>
-                  <label for="scheduleStart">上班</label>
-                  <input id="scheduleStart" type="time" value="06:30">
-                </div>
-                <div>
-                  <label for="scheduleEnd">下班</label>
-                  <input id="scheduleEnd" type="time" value="13:30">
-                </div>
-                <div>
-                  <label for="scheduleInGrace">上班容許分鐘</label>
-                  <input id="scheduleInGrace" type="number" value="15" min="0">
-                </div>
-                <div>
-                  <label for="scheduleOutGrace">下班容許分鐘</label>
-                  <input id="scheduleOutGrace" type="number" value="15" min="0">
-                </div>
-                <div>
-                  <label for="scheduleBreak">休息分鐘</label>
-                  <input id="scheduleBreak" type="number" value="0" min="0">
-                </div>
-                <div>
-                  <label for="scheduleNote">備註</label>
-                  <input id="scheduleNote" type="text" placeholder="例如臨時排班">
-                </div>
-              </div>
-              <div class="calendar-head"><div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div></div>
-              <div id="scheduleCalendar" class="calendar"></div>
-              <div class="actions" style="margin-top:10px;">
-                <button id="saveScheduleBtn" class="btn primary" type="button">套用到選取日期</button>
-                <button id="clearScheduleSelectionBtn" class="btn ghost" type="button">清除選取</button>
-              </div>
-              <div id="scheduleList" class="list" style="margin-top:10px;"></div>
-            </div>
-          </section>
-
-          <section id="admin-people" class="admin-page hidden">
-            <div class="panel">
-              <h3>新增 / 修改員工</h3>
-              <div class="grid">
-                <div>
-                  <label for="newEmployeeName">姓名</label>
-                  <input id="newEmployeeName" type="text" placeholder="員工姓名">
-                </div>
-                <div>
-                  <label for="newEmployeeRate">時薪</label>
-                  <input id="newEmployeeRate" type="number" min="0" value="0">
-                </div>
-                <div>
-                  <label for="newEmployeeStart">預設上班</label>
-                  <input id="newEmployeeStart" type="time" value="06:30">
-                </div>
-                <div>
-                  <label for="newEmployeeEnd">預設下班</label>
-                  <input id="newEmployeeEnd" type="time" value="13:30">
-                </div>
-                <div>
-                  <label for="newEmployeeInGrace">上班容許分鐘</label>
-                  <input id="newEmployeeInGrace" type="number" min="0" value="15">
-                </div>
-                <div>
-                  <label for="newEmployeeOutGrace">下班容許分鐘</label>
-                  <input id="newEmployeeOutGrace" type="number" min="0" value="15">
-                </div>
-                <div>
-                  <label for="newEmployeeBreak">休息分鐘</label>
-                  <input id="newEmployeeBreak" type="number" min="0" value="0">
-                </div>
-                <div>
-                  <label for="newEmployeeLineId">LINE User ID</label>
-                  <input id="newEmployeeLineId" type="text" placeholder="可空白，員工第一次進入再綁定">
-                </div>
-                <button id="addEmployeeBtn" class="btn primary span-2" type="button">儲存員工</button>
-              </div>
-            </div>
-            <div class="panel">
-              <h3>員工名單</h3>
-              <div id="employeeList" class="list"></div>
-            </div>
-          </section>
-
-          <section id="admin-settings" class="admin-page hidden">
-            <div class="panel">
-              <h3>系統設定</h3>
-              <div class="grid">
-                <div class="span-2">
-                  <label for="apiUrlInput">Google Apps Script URL</label>
-                  <input id="apiUrlInput" type="url">
-                </div>
-                <div>
-                  <label for="liffIdInput">LIFF ID</label>
-                  <input id="liffIdInput" type="text">
-                </div>
-                <div>
-                  <label for="adminPinInput">管理 PIN</label>
-                  <input id="adminPinInput" type="password" inputmode="numeric">
-                </div>
-                <div>
-                  <label for="siteNameInput">店名</label>
-                  <input id="siteNameInput" type="text">
-                </div>
-                <div>
-                  <label for="radiusInput">允許打卡半徑（公尺）</label>
-                  <input id="radiusInput" type="number" min="10">
-                </div>
-                <div>
-                  <label for="latInput">緯度</label>
-                  <input id="latInput" type="number" step="0.000001">
-                </div>
-                <div>
-                  <label for="lngInput">經度</label>
-                  <input id="lngInput" type="number" step="0.000001">
-                </div>
-                <button id="useCurrentLocationBtn" class="btn ghost" type="button">用目前定位設為店址</button>
-                <button id="saveSettingsBtn" class="btn primary" type="button">儲存設定</button>
-                <button id="refreshBtn" class="btn blue" type="button">重新同步 Google Sheet</button>
-                <button id="clearLocalBtn" class="btn red" type="button">清除本機暫存</button>
-              </div>
-            </div>
-          </section>
+          </div>
         </div>
       </section>
     </main>
   </div>
 
   <script>
-    const STORE_KEY = "line-clock-system-v8";
-    const DEFAULT_STATE = {
-      settings: {
-        apiUrl: "https://script.google.com/macros/s/AKfycbwDDO0NF5msB2B3KBDvMkPpGN1EDD2hz8cEvKZGxrgOm_QECebVkUlHxnmo6D9_FsTx0w/exec",
-        liffId: "2009988841-I1LdubR2",
-        adminPin: "1234",
-        siteName: "店面",
-        latitude: 25.033964,
-        longitude: 121.564468,
-        radiusMeters: 200
-      },
-      employees: [
-        { id: "emp-1", name: "員工 A", hourlyRate: 190, workStart: "06:30", workEnd: "13:30", inGrace: 15, outGrace: 15, breakMinutes: 0, lineUserId: "" }
-      ],
-      weeklySchedules: [],
-      schedules: [],
-      requests: [],
-      records: []
+    const STORE_KEY = "line-gps-clock-v1";
+    const DEFAULT_SETTINGS = {
+      apiUrl: "https://script.google.com/macros/s/AKfycbwDDO0NF5msB2B3KBDvMkPpGN1EDD2hz8cEvKZGxrgOm_QECebVkUlHxnmo6D9_FsTx0w/exec",
+      liffId: "2009988841-I1LdubR2",
+      siteName: "店面",
+      latitude: 25.033964,
+      longitude: 121.564468,
+      radiusMeters: 100,
+      adminPin: "1234"
     };
 
-    let state = loadState();
+    let settings = loadSettings();
+    let employees = [];
+    let logs = [];
+    let requests = [];
+    let summaries = [];
     let currentProfile = { userId: "", displayName: "訪客", pictureUrl: "" };
     let adminUnlocked = false;
-    let syncing = false;
-    let selectedScheduleDates = new Set();
+    let punchType = "上班";
+    let currentPosition = null;
+    let currentDistance = null;
+    let gpsInRange = false;
 
     const $ = id => document.getElementById(id);
-    const pad = number => String(number).padStart(2, "0");
-    const weekdays = ["日", "一", "二", "三", "四", "五", "六"];
+    const pad = value => String(value).padStart(2, "0");
 
-    function normalizeEmployee(employee) {
-      const normalized = Object.assign({
-        id: `emp-${Date.now()}`,
-        name: "",
-        hourlyRate: 0,
-        workStart: "06:30",
-        workEnd: "13:30",
-        inGrace: 15,
-        outGrace: 15,
-        breakMinutes: 0,
-        lineUserId: "",
-        active: true
-      }, employee);
-      normalized.workStart = toTime(normalized.workStart, "06:30");
-      normalized.workEnd = toTime(normalized.workEnd, "13:30");
-      return normalized;
-    }
-
-    function normalizeSchedule(schedule) {
-      const normalized = Object.assign({}, schedule);
-      normalized.start = toTime(normalized.start, "");
-      normalized.end = toTime(normalized.end, "");
-      return normalized;
-    }
-
-    function normalizeRecord(record) {
-      const normalized = Object.assign({}, record);
-      normalized.date = toDateText(normalized.date);
-      ["inActual", "inCounted", "outActual", "outCounted"].forEach(key => {
-        normalized[key] = toTime(normalized[key], "");
-      });
-      return normalized;
-    }
-
-    function toDateText(value) {
-      if (value === undefined || value === null || value === "") return "";
-      if (value instanceof Date && !Number.isNaN(value.getTime())) {
-        return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
-      }
-      const text = String(value);
-      const ymd = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (ymd) return `${ymd[1]}-${ymd[2]}-${ymd[3]}`;
-      const parsed = new Date(text);
-      if (!Number.isNaN(parsed.getTime())) {
-        return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`;
-      }
-      return text;
-    }
-
-    function toTime(value, fallback = "") {
-      if (value === undefined || value === null || value === "") return fallback;
-      if (value instanceof Date && !Number.isNaN(value.getTime())) {
-        return `${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}`;
-      }
-      const text = String(value);
-      const plain = text.match(/^(\d{1,2}):(\d{2})/);
-      if (plain) return `${pad(Number(plain[1]))}:${plain[2]}`;
-      const iso = text.match(/T(\d{2}):(\d{2})/);
-      if (iso) return `${iso[1]}:${iso[2]}`;
-      return text || fallback;
-    }
-
-    function loadState() {
+    function loadSettings() {
       try {
-        const saved = JSON.parse(localStorage.getItem(STORE_KEY)) || {};
-        return {
-          settings: Object.assign({}, DEFAULT_STATE.settings, saved.settings || {}),
-          employees: (saved.employees || DEFAULT_STATE.employees).map(normalizeEmployee),
-          weeklySchedules: (saved.weeklySchedules || []).map(normalizeSchedule),
-          schedules: (saved.schedules || []).map(normalizeSchedule),
-          requests: saved.requests || [],
-          records: (saved.records || []).map(normalizeRecord)
-        };
+        return Object.assign({}, DEFAULT_SETTINGS, JSON.parse(localStorage.getItem(STORE_KEY)) || {});
       } catch {
-        return structuredClone(DEFAULT_STATE);
+        return Object.assign({}, DEFAULT_SETTINGS);
       }
     }
 
-    function saveState() {
-      localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    function saveLocalSettings() {
+      localStorage.setItem(STORE_KEY, JSON.stringify(settings));
     }
 
-    function todayParts() {
+    function nowParts() {
       const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = pad(now.getMonth() + 1);
-      const dd = pad(now.getDate());
-      const hh = pad(now.getHours());
-      const min = pad(now.getMinutes());
-      const ss = pad(now.getSeconds());
-      return { now, date: `${yyyy}-${mm}-${dd}`, month: `${yyyy}-${mm}`, time: `${hh}:${min}:${ss}` };
+      const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      const month = date.slice(0, 7);
+      const time = `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+      return { now, date, month, time };
     }
 
     function updateClock() {
-      const parts = todayParts();
+      const parts = nowParts();
       $("timeNow").textContent = parts.time;
       $("dateNow").textContent = parts.now.toLocaleDateString("zh-TW", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+      $("roundHint").textContent = `系統提示：目前時間將歸入 ${roundToNearestHalfHour(parts.time)} 班段。`;
     }
 
-    async function apiCall(action, payload = {}) {
-      if (!state.settings.apiUrl) return null;
-      const response = await fetch(state.settings.apiUrl, {
-        method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action, payload })
-      });
-      const data = await response.json();
-      if (!data.ok) throw new Error(data.error || "API request failed");
-      return data;
+    function roundToNearestHalfHour(timeText) {
+      const [h, m] = String(timeText || "00:00").split(":").map(Number);
+      const minutes = (h || 0) * 60 + (m || 0);
+      const rounded = Math.floor((minutes + 14) / 30) * 30;
+      return timeFromMinutes(rounded);
     }
 
-    async function syncFromSheet() {
-      if (!state.settings.apiUrl || syncing) return;
-      syncing = true;
-      try {
-        const data = await apiCall("getBootstrap");
-        if (data?.payload) {
-          state.settings = Object.assign({}, state.settings, data.payload.settings || {});
-          state.employees = (data.payload.employees?.length ? data.payload.employees : state.employees).map(normalizeEmployee);
-          state.weeklySchedules = (data.payload.weeklySchedules || []).map(normalizeSchedule);
-          state.schedules = (data.payload.schedules || []).map(normalizeSchedule);
-          state.requests = data.payload.requests || [];
-          state.records = (data.payload.records || []).map(normalizeRecord);
-          saveState();
-          renderAll();
-        }
-      } catch (error) {
-        console.warn(error);
-        setProfileStatus(`Google Sheet 同步失敗：${error.message}`);
-      } finally {
-        syncing = false;
-      }
+    function timeFromMinutes(minutes) {
+      const normalized = ((minutes % 1440) + 1440) % 1440;
+      return `${pad(Math.floor(normalized / 60))}:${pad(normalized % 60)}`;
     }
 
     function isLineClient() {
@@ -936,13 +566,13 @@
     }
 
     async function initLineProfile() {
-      if (!state.settings.liffId || !isLineClient()) {
-        setProfileStatus(state.settings.apiUrl ? "瀏覽器模式" : "本機測試模式");
+      if (!settings.liffId || !isLineClient()) {
+        renderProfile("瀏覽器模式");
         return;
       }
       try {
         await loadLiffSdk();
-        await liff.init({ liffId: state.settings.liffId });
+        await liff.init({ liffId: settings.liffId });
         if (!liff.isLoggedIn()) {
           liff.login();
           return;
@@ -956,11 +586,11 @@
         renderProfile("已連線 LINE");
       } catch (error) {
         console.warn(error);
-        setProfileStatus("LIFF 讀取失敗，可先用瀏覽器測試");
+        renderProfile("LIFF 讀取失敗");
       }
     }
 
-    function renderProfile(status = "") {
+    function renderProfile(status) {
       $("profileName").textContent = currentProfile.displayName || "訪客";
       $("profileStatus").textContent = status;
       if (currentProfile.pictureUrl) {
@@ -970,300 +600,147 @@
       }
     }
 
-    function setProfileStatus(status) {
-      renderProfile(status);
+    async function apiCall(action, payload = {}) {
+      if (!settings.apiUrl) throw new Error("尚未設定 GAS API URL");
+      const response = await fetch(settings.apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action, payload })
+      });
+      const data = await response.json();
+      if (!data.ok) throw new Error(data.error || "API request failed");
+      return data.payload;
     }
 
-    function currentEmployee() {
-      if (currentProfile.userId) {
-        const matched = state.employees.find(employee => employee.lineUserId === currentProfile.userId);
-        if (matched) return matched;
+    async function syncFromSheet() {
+      try {
+        const data = await apiCall("getBootstrap");
+        settings = Object.assign({}, settings, normalizeSettings(data.settings || {}));
+        saveLocalSettings();
+        employees = (data.employees || []).map(normalizeEmployee);
+        logs = (data.logs || []).map(normalizeLog);
+        requests = (data.requests || []).map(normalizeRequest);
+        summaries = data.summaries || [];
+        renderAll();
+      } catch (error) {
+        console.warn(error);
+        $("profileStatus").textContent = `同步失敗：${error.message}`;
       }
-      const selected = $("employeeSelect")?.value;
-      return state.employees.find(employee => employee.id === selected) || state.employees[0] || null;
     }
 
-    function employeeIsBound() {
-      return Boolean(currentProfile.userId && state.employees.some(employee => employee.lineUserId === currentProfile.userId));
-    }
-
-    function sameMonth(date, month) {
-      return String(date || "").startsWith(month);
-    }
-
-    function sameDay(record, date, employeeId) {
-      return toDateText(record.date) === date && record.employeeId === employeeId;
-    }
-
-    function recordFor(employeeId, date) {
-      return state.records.find(record => sameDay(record, date, employeeId));
-    }
-
-    function minutesOfDay(timeText) {
-      const [h, m] = String(timeText || "00:00").split(":").map(Number);
-      return (h || 0) * 60 + (m || 0);
-    }
-
-    function timeFromMinutes(minutes) {
-      const normalized = ((minutes % 1440) + 1440) % 1440;
-      return `${pad(Math.floor(normalized / 60))}:${pad(normalized % 60)}`;
-    }
-
-    function weekdayOf(dateText) {
-      return new Date(`${dateText}T00:00:00`).getDay();
-    }
-
-    function activeItems(items) {
-      return (items || []).filter(item => String(item.active) !== "false");
-    }
-
-    function employeeSchedule(employee, date) {
-      const daily = activeItems(state.schedules).find(schedule => schedule.employeeId === employee?.id && schedule.date === date);
-      const weekly = daily ? null : activeItems(state.weeklySchedules).find(schedule => schedule.employeeId === employee?.id && Number(schedule.weekday) === weekdayOf(date));
-      const source = daily || weekly || {};
-      const isLeave = daily && daily.type === "leave";
+    function normalizeSettings(data) {
       return {
-        id: source.id || `employee-${employee?.id || "unknown"}`,
-        name: isLeave ? "請假" : (daily ? "單日排班" : (weekly ? "固定班" : "預設班")),
-        type: isLeave ? "leave" : "work",
-        start: source.start || employee?.workStart || "06:30",
-        end: source.end || employee?.workEnd || "13:30",
-        inGrace: Number(source.inGrace ?? employee?.inGrace ?? 15),
-        outGrace: Number(source.outGrace ?? employee?.outGrace ?? 15),
-        breakMinutes: Number(source.breakMinutes ?? employee?.breakMinutes ?? 0),
-        note: source.note || ""
+        siteName: data.siteName || settings.siteName,
+        latitude: Number(data.latitude || settings.latitude),
+        longitude: Number(data.longitude || settings.longitude),
+        radiusMeters: Number(data.radiusMeters || settings.radiusMeters || 100),
+        adminPin: data.adminPin || settings.adminPin
       };
     }
 
-    function judgeClock(type, actualTime, shift) {
-      const actual = minutesOfDay(actualTime);
-      const scheduled = minutesOfDay(type === "in" ? shift.start : shift.end);
-      const grace = Number(type === "in" ? shift.inGrace : shift.outGrace) || 0;
-      if (actual >= scheduled - grace && actual <= scheduled + grace) {
-        return { status: "正常", countedTime: timeFromMinutes(scheduled) };
+    function normalizeEmployee(row) {
+      return {
+        lineUserId: row["LINE ID"] || row.lineUserId || "",
+        name: row["員工姓名"] || row.name || "",
+        status: row["狀態(啟用/停用)"] || row.status || "啟用"
+      };
+    }
+
+    function normalizeLog(row) {
+      return {
+        lineUserId: row["LINE ID"] || "",
+        name: row["員工姓名"] || "",
+        date: toDateText(row["日期"]),
+        actualTime: toTimeText(row["實際打卡時間"]),
+        roundedTime: toTimeText(row["系統修正時間(30分單位)"]),
+        type: row["打卡類型(上班/下班)"] || "",
+        note: row["備註/來源(正常打卡/管理者補卡)"] || ""
+      };
+    }
+
+    function normalizeRequest(row) {
+      return {
+        requestId: row["申請ID"] || "",
+        lineUserId: row["LINE ID"] || "",
+        name: row["員工姓名"] || "",
+        date: toDateText(row["日期"]),
+        type: row["類型(上班/下班)"] || "",
+        claimedTime: toTimeText(row["員工自述時間"]),
+        reason: row["原因備註"] || "",
+        status: row["狀態(待審核/已核准/已拒絕)"] || "待審核"
+      };
+    }
+
+    function toDateText(value) {
+      if (!value) return "";
+      const text = String(value);
+      const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+      const parsed = new Date(text);
+      if (!Number.isNaN(parsed.getTime())) return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`;
+      return text;
+    }
+
+    function toTimeText(value) {
+      if (!value) return "";
+      const text = String(value);
+      const plain = text.match(/^(\d{1,2}):(\d{2})/);
+      if (plain) return `${pad(Number(plain[1]))}:${plain[2]}`;
+      const iso = text.match(/T(\d{2}):(\d{2})/);
+      if (iso) return `${iso[1]}:${iso[2]}`;
+      return text;
+    }
+
+    function selectedEmployee() {
+      if (currentProfile.userId) {
+        const matched = employees.find(employee => employee.lineUserId === currentProfile.userId);
+        if (matched) return matched;
+        return { lineUserId: currentProfile.userId, name: currentProfile.displayName || "LINE 使用者", status: "啟用" };
       }
-      if (type === "in") {
-        return actual > scheduled + grace
-          ? { status: "遲到", countedTime: timeFromMinutes(actual) }
-          : { status: "早到", countedTime: timeFromMinutes(scheduled) };
-      }
-      return actual < scheduled - grace
-        ? { status: "早退", countedTime: timeFromMinutes(actual) }
-        : { status: "加班", countedTime: timeFromMinutes(actual) };
+      const selectedId = $("employeeSelect").value;
+      return employees.find(employee => employee.lineUserId === selectedId) || employees[0] || { lineUserId: "", name: "測試員工", status: "啟用" };
     }
 
-    function dailyStatus(record, employee, date) {
-      const shift = employeeSchedule(employee, date);
-      if (shift.type === "leave") return { level: "off", label: "請假", detail: shift.note || "" };
-      if (!shift.start || !shift.end) return { level: "off", label: "休", detail: "" };
-      if (date > todayParts().date && !record) return { level: "off", label: "未來", detail: "" };
-      if (!record) return { level: "bad", label: "異常", detail: "未打卡" };
-      if (record.inActual && !record.outActual) return { level: "warn", label: "上班中", detail: record.inActual };
-      const locationAbnormal = record.locationStatus && !["範圍內", "管理補卡"].includes(record.locationStatus);
-      const abnormal = [record.inStatus, record.outStatus].some(status => status && status !== "正常" && status !== "早到" && status !== "加班");
-      if (!record.inActual || !record.outActual || abnormal || locationAbnormal) return { level: "bad", label: "異常", detail: `${record.inActual || "--"} / ${record.outActual || "--"}` };
-      return { level: "ok", label: "正常", detail: `${record.inActual || "--"} / ${record.outActual || "--"}` };
+    function renderEmployeeSelect() {
+      const wrap = $("browserEmployeeWrap");
+      wrap.classList.toggle("hidden", Boolean(currentProfile.userId));
+      const current = $("employeeSelect").value;
+      $("employeeSelect").innerHTML = employees.length
+        ? employees.map(employee => `<option value="${escapeHtml(employee.lineUserId)}">${escapeHtml(employee.name || "(未命名)")}</option>`).join("")
+        : `<option value="">測試員工</option>`;
+      if (employees.some(employee => employee.lineUserId === current)) $("employeeSelect").value = current;
     }
 
-    function calculateHours(record, employee, date) {
-      if (!record?.inCounted || !record?.outCounted) return Number(record?.hours || 0);
-      const shift = employeeSchedule(employee, date);
-      let start = minutesOfDay(record.inCounted);
-      let end = minutesOfDay(record.outCounted);
-      if (end < start) end += 1440;
-      return Math.round((Math.max(0, end - start - Number(shift.breakMinutes || 0)) / 60) * 100) / 100;
-    }
-
-    function monthDates(month) {
-      const [year, monthIndex] = month.split("-").map(Number);
-      const first = new Date(year, monthIndex - 1, 1);
-      const days = new Date(year, monthIndex, 0).getDate();
-      return { firstWeekday: first.getDay(), days };
-    }
-
-    function renderCalendar(containerId, month, employee, options = {}) {
-      const container = $(containerId);
-      if (!container) return;
-      const { firstWeekday, days } = monthDates(month);
-      const blanks = Array.from({ length: firstWeekday }, () => `<div class="day blank"></div>`);
-      const cells = [];
-      for (let day = 1; day <= days; day++) {
-        const date = `${month}-${pad(day)}`;
-        const record = employee ? recordFor(employee.id, date) : null;
-        const status = employee ? dailyStatus(record, employee, date) : { level: "off", label: "", detail: "" };
-        const selected = options.selected?.has(date) ? " selected" : "";
-        const selectable = options.selectable ? " selectable" : "";
-        const data = options.selectable ? ` data-schedule-date="${date}"` : (options.manual ? ` data-manual-date="${date}" data-manual-type="${record?.inActual ? "out" : "in"}"` : ` data-detail-date="${date}"`);
-        cells.push(`<button class="day ${status.level}${selected}${selectable}" type="button"${data}><b>${day}</b><span>${status.label}</span><span class="detail">${escapeHtml(status.detail || "")}</span></button>`);
-      }
-      container.innerHTML = [...blanks, ...cells].join("");
-    }
-
-    function renderEmployeeHome() {
-      const employee = currentEmployee();
-      const bound = employeeIsBound();
-      $("bindPanel").classList.toggle("hidden", bound || !currentProfile.userId);
-      $("heroTitle").textContent = employee ? `${employee.name} 的打卡` : "員工打卡";
-      $("heroText").textContent = "員工端只顯示自己的打卡、本月出勤、補卡與請假。";
-      if (!employee) {
-        $("employeeStatus").textContent = "尚未建立員工，請先請管理者新增員工。";
-        $("primaryClockBtn").disabled = true;
+    async function locate() {
+      $("gpsStatus").className = "hint warn";
+      $("gpsStatus").textContent = "GPS 定位中...";
+      $("confirmPunchBtn").disabled = true;
+      if (!navigator.geolocation) {
+        $("gpsStatus").className = "hint bad";
+        $("gpsStatus").textContent = "手機不支援 GPS 定位。";
         return;
       }
-
-      const today = todayParts().date;
-      const record = recordFor(employee.id, today);
-      const shift = employeeSchedule(employee, today);
-      const status = dailyStatus(record, employee, today);
-      const primary = $("primaryClockBtn");
-      const secondary = $("secondaryClockBtn");
-      primary.disabled = false;
-      primary.className = "btn primary";
-      primary.dataset.clockType = "in";
-
-      if (shift.type === "leave") {
-        $("employeeStatus").innerHTML = `<strong>今天是請假。</strong><br>${escapeHtml(shift.note || "")}`;
-        primary.textContent = "今日請假";
-        primary.disabled = true;
-      } else if (!record?.inActual) {
-        $("employeeStatus").innerHTML = `<strong>尚未上班打卡。</strong><br>今日班表 ${shift.start} - ${shift.end}，上班 ${shift.start} 前後 ${shift.inGrace} 分鐘算準時。`;
-        primary.textContent = "上班打卡";
-        primary.dataset.clockType = "in";
-      } else if (!record.outActual) {
-        $("employeeStatus").innerHTML = `<strong>已上班打卡，現在是上班中。</strong><br>上班時間 ${record.inActual}，下班 ${shift.end} 前後 ${shift.outGrace} 分鐘算準時。`;
-        primary.textContent = "下班打卡";
-        primary.dataset.clockType = "out";
-        primary.className = "btn blue";
-      } else {
-        $("employeeStatus").innerHTML = `<strong>今日已完成打卡。</strong><br>上班 ${record.inActual}，下班 ${record.outActual}，狀態：${status.label}。`;
-        primary.textContent = "今日已完成";
-        primary.disabled = true;
-      }
-      secondary.onclick = () => switchPage("request");
-      renderEmployeeStats(employee);
-      renderCalendar("employeeCalendar", todayParts().month, employee);
-      renderMyRequests(employee);
-      $("requestIdentity").textContent = `申請人：${employee.name}`;
-    }
-
-    function renderEmployeeStats(employee) {
-      const month = todayParts().month;
-      const rows = state.records.filter(record => record.employeeId === employee.id && sameMonth(record.date, month));
-      let ok = 0;
-      let bad = 0;
-      let hours = 0;
-      rows.forEach(record => {
-        const status = dailyStatus(record, employee, record.date);
-        if (status.level === "ok") ok++;
-        if (status.level === "bad") bad++;
-        hours += calculateHours(record, employee, record.date);
-      });
-      $("employeeHours").textContent = hours.toFixed(2);
-      $("employeeOk").textContent = ok;
-      $("employeeBad").textContent = bad;
-    }
-
-    async function clock(type) {
-      const employee = currentEmployee();
-      if (!employee) return alert("找不到員工資料，請先請管理者新增員工。");
-      if (currentProfile.userId && !employeeIsBound()) return alert("請先綁定你的 LINE 身分。");
-      const today = todayParts().date;
-      let existing = recordFor(employee.id, today);
-      if (type === "out" && !existing?.inActual && state.settings.apiUrl) {
-        await syncFromSheet();
-        existing = recordFor(employee.id, today);
-      }
-      if (type === "in" && existing?.inActual && !existing?.outActual) return alert("你已經上班打卡了，現在應該點下班打卡。");
-      if (type === "in" && existing?.inActual && existing?.outActual) return alert("今天已完成上下班打卡。");
-      if (type === "out" && !existing?.inActual) return alert("目前沒有上班打卡紀錄，請送出補上班卡申請。");
-      if (type === "out" && existing?.outActual) return alert("你已經下班打卡了。");
-
-      const position = await getPosition();
-      if (!position.ok) return alert(position.message);
-      const distance = distanceMeters(position.latitude, position.longitude, Number(state.settings.latitude), Number(state.settings.longitude));
-      const inRange = distance <= Number(state.settings.radiusMeters || 200);
-      if (!inRange) {
-        const ok = confirm(`你目前距離打卡地點約 ${Math.round(distance)} 公尺，超過允許範圍 ${state.settings.radiusMeters} 公尺。仍要送出異地打卡並標記異常嗎？`);
-        if (!ok) return;
-      }
-
-      const time = todayParts().time.slice(0, 5);
-      const shift = employeeSchedule(employee, today);
-      const judge = judgeClock(type, time, shift);
-      const record = {
-        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-        date: today,
-        employeeId: employee.id,
-        employeeName: employee.name,
-        lineUserId: employee.lineUserId || currentProfile.userId || "",
-        type,
-        actualTime: time,
-        countedTime: judge.countedTime,
-        shiftId: shift.id,
-        shiftName: shift.name,
-        clockStatus: judge.status,
-        locationStatus: inRange ? "範圍內" : "範圍外",
-        distance: Math.round(distance),
-        locationText: `${position.latitude.toFixed(6)},${position.longitude.toFixed(6)}`,
-        note: [$("noteInput").value.trim(), inRange ? "" : `異地打卡，距離 ${Math.round(distance)} 公尺`].filter(Boolean).join("；"),
-        iso: new Date().toISOString()
-      };
-      const button = $("primaryClockBtn");
-      button.disabled = true;
-      button.textContent = "寫入中...";
-      try {
-        if (state.settings.apiUrl) {
-          await apiCall("clock", record);
-          upsertLocalRecord(record);
-          saveState();
-          await syncFromSheet();
+      navigator.geolocation.getCurrentPosition(position => {
+        currentPosition = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        };
+        currentDistance = distanceMeters(currentPosition.latitude, currentPosition.longitude, Number(settings.latitude), Number(settings.longitude));
+        gpsInRange = currentDistance <= Number(settings.radiusMeters || 100);
+        if (gpsInRange) {
+          $("gpsStatus").className = "hint";
+          $("gpsStatus").textContent = `已進入打卡範圍，距離約 ${Math.round(currentDistance)} 公尺。`;
+          $("confirmPunchBtn").disabled = false;
         } else {
-          upsertLocalRecord(record);
-          saveState();
-          renderAll();
+          $("gpsStatus").className = "hint bad";
+          $("gpsStatus").textContent = `超出打卡範圍，距離約 ${Math.round(currentDistance)} 公尺，允許範圍 ${settings.radiusMeters} 公尺。`;
+          $("confirmPunchBtn").disabled = true;
         }
-        $("noteInput").value = "";
-        alert(`${type === "in" ? "上班" : "下班"}打卡完成：${judge.status}`);
-      } catch (error) {
-        alert(`打卡失敗：${error.message}`);
-      } finally {
-        renderEmployeeHome();
-      }
-    }
-
-    function upsertLocalRecord(record) {
-      const employee = state.employees.find(item => item.id === record.employeeId) || {};
-      const shift = employeeSchedule(employee, record.date);
-      let daily = state.records.find(item => sameDay(item, record.date, record.employeeId));
-      if (!daily) {
-        daily = { dailyKey: `${record.date}|${record.employeeId}`, date: record.date, employeeId: record.employeeId, employeeName: record.employeeName, lineUserId: record.lineUserId, shiftId: shift.id, shiftName: shift.name, inActual: "", inCounted: "", inStatus: "", outActual: "", outCounted: "", outStatus: "", locationStatus: "", distance: "", note: "", hours: 0, pay: 0 };
-        state.records.push(daily);
-      }
-      if (record.type === "in") {
-        daily.inActual = record.actualTime;
-        daily.inCounted = record.countedTime;
-        daily.inStatus = record.clockStatus;
-      } else {
-        daily.outActual = record.actualTime;
-        daily.outCounted = record.countedTime;
-        daily.outStatus = record.clockStatus;
-      }
-      daily.locationStatus = record.locationStatus;
-      daily.distance = record.distance;
-      daily.note = record.note || daily.note;
-      daily.hours = calculateHours(daily, employee, record.date);
-      daily.pay = Math.round(daily.hours * Number(employee.hourlyRate || 0));
-    }
-
-    function getPosition() {
-      return new Promise(resolve => {
-        if (!navigator.geolocation) return resolve({ ok: false, message: "手機不支援 GPS 定位。" });
-        navigator.geolocation.getCurrentPosition(
-          position => resolve({ ok: true, latitude: position.coords.latitude, longitude: position.coords.longitude }),
-          error => resolve({ ok: false, message: `定位失敗：${error.message || "請允許 LINE 使用定位權限"}` }),
-          { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-        );
-      });
+      }, error => {
+        $("gpsStatus").className = "hint bad";
+        $("gpsStatus").textContent = `定位失敗：${error.message || "請允許 LINE 使用定位權限"}`;
+        $("confirmPunchBtn").disabled = true;
+      }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
     }
 
     function distanceMeters(lat1, lon1, lat2, lon2) {
@@ -1275,494 +752,262 @@
       return earth * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     }
 
-    async function bindCurrentLineUser() {
-      if (!currentProfile.userId) return alert("目前不是 LINE LIFF 環境，無法綁定 LINE User ID。");
-      const employee = state.employees.find(item => item.id === $("employeeSelect").value);
-      if (!employee) return alert("請先選擇員工。");
-      const usedBy = state.employees.find(item => item.lineUserId === currentProfile.userId && item.id !== employee.id);
-      if (usedBy) {
-        usedBy.lineUserId = "";
-        if (state.settings.apiUrl) await apiCall("saveEmployee", usedBy);
-      }
-      employee.lineUserId = currentProfile.userId;
-      saveState();
-      if (state.settings.apiUrl) {
-        await apiCall("saveEmployee", employee);
-        await syncFromSheet();
-      } else {
-        renderAll();
-      }
-      alert(`已綁定 ${employee.name}`);
-    }
-
-    function renderRequestFields() {
-      const isPunch = $("requestType").value === "punch";
-      document.querySelectorAll(".punch-only").forEach(item => item.classList.toggle("hidden", !isPunch));
-    }
-
-    async function submitRequest() {
-      const employee = currentEmployee();
-      if (!employee) return alert("找不到員工資料。");
-      if (currentProfile.userId && !employeeIsBound()) return alert("請先綁定你的 LINE 身分。");
-      const type = $("requestType").value;
-      const request = {
-        id: `request-${Date.now()}`,
-        date: $("requestDate").value,
-        employeeId: employee.id,
+    async function confirmPunch() {
+      if (!gpsInRange || !currentPosition) return alert("尚未進入打卡範圍。");
+      const employee = selectedEmployee();
+      const actualTime = nowParts().time.slice(0, 5);
+      const payload = {
+        lineUserId: employee.lineUserId,
         employeeName: employee.name,
-        lineUserId: employee.lineUserId || currentProfile.userId || "",
-        type,
-        start: "",
-        end: "",
-        punchType: type === "punch" ? $("requestPunchType").value : "",
-        punchTime: type === "punch" ? $("requestPunchTime").value : "",
-        reason: $("requestReason").value.trim(),
-        status: "pending",
-        createdAt: new Date().toISOString(),
-        active: true
+        displayName: currentProfile.displayName,
+        date: nowParts().date,
+        type: punchType,
+        actualTime,
+        latitude: currentPosition.latitude,
+        longitude: currentPosition.longitude,
+        distance: Math.round(currentDistance),
+        locationStatus: "範圍內",
+        note: $("punchNote").value.trim()
       };
-      if (!request.date) return alert("請選擇日期。");
-      if (type === "punch" && !request.punchTime) return alert("請選擇補卡時間。");
-      state.requests = [request, ...state.requests];
-      saveState();
+      $("confirmPunchBtn").disabled = true;
+      $("confirmPunchBtn").textContent = "寫入中...";
       try {
-        if (state.settings.apiUrl) {
-          await apiCall("saveRequest", request);
-          await syncFromSheet();
-        } else {
-          renderAll();
-        }
-        $("requestReason").value = "";
-        alert("申請已送出，等待管理者審核。");
+        await apiCall("clock", payload);
+        await syncFromSheet();
+        alert(`${punchType}打卡完成，實際 ${actualTime}，系統歸入 ${roundToNearestHalfHour(actualTime)}。`);
+        if (window.liff && liff.isInClient()) liff.closeWindow();
       } catch (error) {
-        alert(`申請失敗：${error.message}`);
+        alert(`打卡失敗：${error.message}`);
+      } finally {
+        $("confirmPunchBtn").textContent = "確認打卡";
+        if (gpsInRange) $("confirmPunchBtn").disabled = false;
       }
     }
 
-    function requestLabel(request) {
-      if (request.type === "leave") return "請假";
-      return request.punchType === "out" ? "補下班卡" : "補上班卡";
+    async function refreshSummary() {
+      const employee = selectedEmployee();
+      $("queryIdentity").textContent = `員工：${employee.name || "未綁定"}。本頁只顯示當月總工時，不顯示每日明細。`;
+      const month = nowParts().month;
+      $("summaryMonth").textContent = `${month.replace("-", " 年 ")} 月累計總工時`;
+      try {
+        const summary = employee.lineUserId ? await apiCall("getMonthlySummary", { lineUserId: employee.lineUserId, month }) : findSummary(employee.lineUserId, month);
+        $("summaryHours").textContent = `${Number(summary?.totalHours || 0).toFixed(1)} 小時`;
+      } catch (error) {
+        $("summaryHours").textContent = "--";
+        $("queryIdentity").textContent = `讀取失敗：${error.message}`;
+      }
     }
 
-    function statusBadge(status) {
-      const map = { approved: ["ok", "已核准"], rejected: ["bad", "已退回"], pending: ["warn", "待審核"] };
-      const [cls, label] = map[status] || ["", status || "待審核"];
-      return `<span class="badge ${cls}">${label}</span>`;
+    function findSummary(lineUserId, month) {
+      return summaries.find(summary => summary.lineUserId === lineUserId && summary.month === month) || { totalHours: 0 };
     }
 
-    function renderMyRequests(employee) {
-      const rows = activeItems(state.requests).filter(request => request.employeeId === employee?.id).slice(0, 8);
-      $("myRequestList").innerHTML = rows.length ? rows.map(request => `
-        <div class="list-row">
-          <div><strong>${escapeHtml(request.date)} ${requestLabel(request)}</strong><br><small>${escapeHtml(request.reason || "無備註")}</small></div>
-          ${statusBadge(request.status)}
-        </div>
-      `).join("") : `<div class="empty">目前沒有申請。</div>`;
+    async function submitCorrectionRequest() {
+      const employee = selectedEmployee();
+      const payload = {
+        requestId: `REQ-${Date.now()}`,
+        lineUserId: employee.lineUserId,
+        employeeName: employee.name,
+        date: $("requestDate").value,
+        type: $("requestType").value,
+        claimedTime: $("requestTime").value,
+        reason: $("requestReason").value.trim()
+      };
+      if (!payload.date || !payload.claimedTime) return alert("請填日期與時間。");
+      try {
+        await apiCall("saveCorrectionRequest", payload);
+        $("requestReason").value = "";
+        $("requestPanel").classList.add("hidden");
+        await syncFromSheet();
+        alert("補卡申請已送出，等待管理者審核。");
+      } catch (error) {
+        alert(`送出失敗：${error.message}`);
+      }
     }
 
     function unlockAdmin() {
-      if ($("adminPinInputLogin").value !== String(state.settings.adminPin || "1234")) return alert("PIN 錯誤。");
+      if ($("adminPinLogin").value !== String(settings.adminPin || "1234")) return alert("PIN 錯誤。");
       adminUnlocked = true;
       $("adminLock").classList.add("hidden");
       $("adminArea").classList.remove("hidden");
-      renderAll();
+      renderAdmin();
     }
 
-    function renderDashboard() {
-      const today = todayParts().date;
-      const dueEmployees = state.employees.filter(employee => employeeSchedule(employee, today).type !== "leave");
-      const arrived = dueEmployees.filter(employee => recordFor(employee.id, today)?.inActual);
-      const abnormal = dueEmployees.filter(employee => dailyStatus(recordFor(employee.id, today), employee, today).level === "bad");
-      $("dueCount").textContent = dueEmployees.length;
-      $("arrivedCount").textContent = arrived.length;
-      $("abnormalCount").textContent = abnormal.length;
-      $("todayFeed").innerHTML = dueEmployees.length ? dueEmployees.map(employee => {
-        const record = recordFor(employee.id, today);
-        const status = dailyStatus(record, employee, today);
-        return `<div class="record"><div><strong>${escapeHtml(employee.name)}</strong><br><small>上班 ${record?.inActual || "--"} / 下班 ${record?.outActual || "--"}</small></div><span class="badge ${status.level}">${status.label}</span></div>`;
-      }).join("") : `<div class="empty">今天沒有應到員工。</div>`;
-      renderApprovals();
-    }
-
-    function renderApprovals() {
-      const pending = activeItems(state.requests).filter(request => request.status === "pending");
-      $("approvalList").innerHTML = pending.length ? pending.map(request => `
-        <div class="list-row">
-          <div>
-            <strong>${escapeHtml(request.employeeName)}｜${escapeHtml(request.date)}｜${requestLabel(request)}</strong><br>
-            <small>${escapeHtml(request.reason || "無備註")}${request.punchTime ? `，時間 ${escapeHtml(request.punchTime)}` : ""}</small>
-          </div>
-          <div class="actions">
-            <button class="btn primary" type="button" data-approve-request="${escapeHtml(request.id)}">核准</button>
-            <button class="btn red" type="button" data-reject-request="${escapeHtml(request.id)}">退回</button>
-          </div>
-        </div>
-      `).join("") : `<div class="empty">沒有待審核申請。</div>`;
-    }
-
-    async function reviewRequest(id, status) {
-      const request = state.requests.find(item => item.id === id);
-      if (!request) return;
-      request.status = status;
-      request.reviewedAt = new Date().toISOString();
-      if (status === "approved" && !state.settings.apiUrl) {
-        if (request.type === "punch") {
-          await saveManualClock(request.employeeId, request.date, request.punchType || "in", request.punchTime, `審核補卡：${request.reason || ""}`, true);
-        } else {
-          const schedule = { id: `approved-${request.id}`, date: request.date, employeeId: request.employeeId, type: "leave", start: "", end: "", inGrace: 15, outGrace: 15, breakMinutes: 0, note: `請假：${request.reason || ""}`, active: true };
-          state.schedules = state.schedules.filter(item => !(item.employeeId === schedule.employeeId && item.date === schedule.date));
-          state.schedules.push(schedule);
-        }
-      }
-      saveState();
-      if (state.settings.apiUrl) {
-        await apiCall("reviewRequest", { id, status });
-        await syncFromSheet();
-      } else {
-        renderAll();
-      }
-      alert(status === "approved" ? "已核准。" : "已退回。");
-    }
-
-    function renderAdminRecords() {
-      const employee = state.employees.find(item => item.id === $("filterEmployee").value) || state.employees[0];
-      const month = $("filterMonth").value || todayParts().month;
-      if (employee) renderCalendar("adminCalendar", month, employee, { manual: true });
-      const rows = state.records
-        .filter(record => sameMonth(record.date, month) && (!employee || record.employeeId === employee.id))
-        .sort((a, b) => b.date.localeCompare(a.date));
-      $("recordTable").innerHTML = rows.length ? rows.map(record => {
-        const employeeRow = state.employees.find(item => item.id === record.employeeId) || { name: record.employeeName || "" };
-        const status = dailyStatus(record, employeeRow, record.date);
-        return `<tr>
-          <td>${escapeHtml(record.date)}</td>
-          <td>${escapeHtml(record.employeeName || employeeRow.name)}</td>
-          <td>${escapeHtml(record.inActual || "--")}<br><small>${escapeHtml(record.inStatus || "")}</small></td>
-          <td>${escapeHtml(record.outActual || "--")}<br><small>${escapeHtml(record.outStatus || "")}</small></td>
-          <td><span class="badge ${status.level}">${status.label}</span></td>
-          <td>${Number(record.hours || calculateHours(record, employeeRow, record.date)).toFixed(2)}</td>
-          <td>${escapeHtml(record.distance ?? "")}</td>
-          <td>${escapeHtml(record.note || "")}</td>
-        </tr>`;
-      }).join("") : `<tr><td colspan="8"><div class="empty">沒有出勤紀錄。</div></td></tr>`;
-    }
-
-    function prepareManualClock(date, type) {
-      $("manualDate").value = date;
-      $("manualType").value = type || "in";
-      const employeeId = $("filterEmployee").value || state.employees[0]?.id || "";
-      $("manualEmployee").value = employeeId;
-      const employee = state.employees.find(item => item.id === employeeId);
-      const shift = employee ? employeeSchedule(employee, date) : {};
-      $("manualTime").value = type === "out" ? (shift.end || "13:30") : (shift.start || "06:30");
-      $("manualNote").value = "管理修正異常";
-    }
-
-    async function manualClock() {
-      await saveManualClock($("manualEmployee").value, $("manualDate").value, $("manualType").value, $("manualTime").value, $("manualNote").value, false);
-      alert("已儲存補卡 / 修改。");
-    }
-
-    async function saveManualClock(employeeId, date, type, time, note, silent) {
-      const employee = state.employees.find(item => item.id === employeeId);
-      if (!employee) return alert("請選擇員工。");
-      if (!date || !time) return alert("請填日期與時間。");
-      const shift = employeeSchedule(employee, date);
-      const judge = judgeClock(type, time, shift);
-      const record = {
-        id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
-        date,
-        employeeId: employee.id,
-        employeeName: employee.name,
-        lineUserId: employee.lineUserId || "",
-        type,
-        actualTime: time,
-        countedTime: judge.countedTime,
-        shiftId: shift.id,
-        shiftName: shift.name,
-        clockStatus: judge.status,
-        locationStatus: "管理補卡",
-        distance: "",
-        locationText: "管理者修正",
-        note: note || "管理者修正",
-        iso: new Date(`${date}T${time}:00`).toISOString()
-      };
-      if (state.settings.apiUrl) {
-        await apiCall("clock", record);
-        await syncFromSheet();
-      } else {
-        upsertLocalRecord(record);
-        saveState();
-        renderAll();
-      }
-      if (!silent) renderAll();
-    }
-
-    function renderSchedules() {
-      const employee = state.employees.find(item => item.id === $("scheduleEmployee").value) || state.employees[0];
-      const month = $("scheduleMonth").value || todayParts().month;
-      renderCalendar("scheduleCalendar", month, employee, { selectable: true, selected: selectedScheduleDates });
-      const daily = activeItems(state.schedules).filter(item => item.employeeId === employee?.id && sameMonth(item.date, month)).sort((a, b) => a.date.localeCompare(b.date));
-      $("scheduleList").innerHTML = daily.length ? daily.map(item => `
-        <div class="list-row">
-          <div><strong>${escapeHtml(item.date)} ${item.type === "leave" ? "請假" : `${escapeHtml(item.start)}-${escapeHtml(item.end)}`}</strong><br><small>${escapeHtml(item.note || "")}</small></div>
-          <button class="btn red" type="button" data-delete-schedule="${escapeHtml(item.id)}">刪除</button>
-        </div>
-      `).join("") : `<div class="empty">這個月沒有單日排班。</div>`;
-      const weekly = activeItems(state.weeklySchedules).filter(item => item.employeeId === employee?.id).sort((a, b) => Number(a.weekday) - Number(b.weekday));
-      $("weeklyScheduleList").innerHTML = weekly.length ? weekly.map(item => `
-        <div class="list-row">
-          <div><strong>週${weekdays[Number(item.weekday)]} ${escapeHtml(item.start)}-${escapeHtml(item.end)}</strong><br><small>容許 ${item.inGrace}/${item.outGrace} 分，休息 ${item.breakMinutes || 0} 分</small></div>
-          <button class="btn red" type="button" data-delete-weekly-schedule="${escapeHtml(item.id)}">刪除</button>
-        </div>
-      `).join("") : `<div class="empty">尚未設定固定班。</div>`;
-    }
-
-    function updateScheduleDefaults(prefix, employeeId) {
-      const employee = state.employees.find(item => item.id === employeeId) || state.employees[0];
-      if (!employee) return;
-      $(`${prefix}Start`).value = employee.workStart || "06:30";
-      $(`${prefix}End`).value = employee.workEnd || "13:30";
-      $(`${prefix}InGrace`).value = employee.inGrace ?? 15;
-      $(`${prefix}OutGrace`).value = employee.outGrace ?? 15;
-      $(`${prefix}Break`).value = employee.breakMinutes || 0;
-    }
-
-    async function saveWeeklySchedule() {
-      const employeeId = $("weeklyEmployee").value;
-      const selected = Array.from(document.querySelectorAll("#weeklyDays input:checked")).map(input => Number(input.value));
-      if (!employeeId || selected.length === 0) return alert("請選擇員工與星期。");
-      const rows = selected.map((weekday, index) => {
-        const existing = activeItems(state.weeklySchedules).find(item => item.employeeId === employeeId && Number(item.weekday) === weekday);
-        return {
-          id: existing?.id || `weekly-${Date.now()}-${index}`,
-          employeeId,
-          weekday,
-          start: $("weeklyStart").value,
-          end: $("weeklyEnd").value,
-          inGrace: Number($("weeklyInGrace").value) || 0,
-          outGrace: Number($("weeklyOutGrace").value) || 0,
-          breakMinutes: Number($("weeklyBreak").value) || 0,
-          note: $("weeklyNote").value.trim(),
-          active: true
-        };
+    async function saveSettings() {
+      settings = Object.assign({}, settings, {
+        apiUrl: $("apiUrlInput").value.trim(),
+        liffId: $("liffIdInput").value.trim(),
+        siteName: $("siteNameInput").value.trim() || "店面",
+        latitude: Number($("latInput").value) || DEFAULT_SETTINGS.latitude,
+        longitude: Number($("lngInput").value) || DEFAULT_SETTINGS.longitude,
+        radiusMeters: Number($("radiusInput").value) || 100,
+        adminPin: $("adminPinInput").value.trim() || "1234"
       });
-      state.weeklySchedules = state.weeklySchedules.filter(item => !rows.some(row => row.id === item.id));
-      state.weeklySchedules.push(...rows);
-      saveState();
-      if (state.settings.apiUrl) {
-        for (const row of rows) await apiCall("saveWeeklySchedule", row);
+      saveLocalSettings();
+      try {
+        await apiCall("saveSettings", settings);
         await syncFromSheet();
-      } else {
-        renderAll();
+        alert("設定已儲存。");
+      } catch (error) {
+        alert(`設定儲存失敗：${error.message}`);
       }
-      alert(`已儲存 ${rows.length} 個固定班。`);
     }
 
-    async function saveSchedule() {
-      const employeeId = $("scheduleEmployee").value;
-      const dates = Array.from(selectedScheduleDates).sort();
-      if (!employeeId || dates.length === 0) return alert("請選擇員工與日期。");
-      const rows = dates.map((date, index) => {
-        const existing = activeItems(state.schedules).find(item => item.employeeId === employeeId && item.date === date);
-        return {
-          id: existing?.id || `schedule-${Date.now()}-${index}`,
-          date,
-          employeeId,
-          type: "work",
-          start: $("scheduleStart").value,
-          end: $("scheduleEnd").value,
-          inGrace: Number($("scheduleInGrace").value) || 0,
-          outGrace: Number($("scheduleOutGrace").value) || 0,
-          breakMinutes: Number($("scheduleBreak").value) || 0,
-          note: $("scheduleNote").value.trim(),
-          active: true
-        };
-      });
-      state.schedules = state.schedules.filter(item => !rows.some(row => row.id === item.id));
-      state.schedules.push(...rows);
-      saveState();
-      if (state.settings.apiUrl) {
-        for (const row of rows) await apiCall("saveSchedule", row);
-        await syncFromSheet();
-      } else {
-        renderAll();
-      }
-      selectedScheduleDates.clear();
-      alert(`已套用 ${rows.length} 天排班。`);
+    async function setCurrentLocationAsSite() {
+      if (!navigator.geolocation) return alert("不支援定位。");
+      navigator.geolocation.getCurrentPosition(position => {
+        $("latInput").value = position.coords.latitude.toFixed(6);
+        $("lngInput").value = position.coords.longitude.toFixed(6);
+      }, error => alert(`定位失敗：${error.message}`), { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
     }
 
-    async function deleteSchedule(id) {
-      if (!confirm("確定刪除這筆單日排班？")) return;
-      state.schedules = state.schedules.filter(item => item.id !== id);
-      saveState();
-      if (state.settings.apiUrl) {
-        await apiCall("deleteSchedule", { id });
-        await syncFromSheet();
-      } else renderAll();
-    }
-
-    async function deleteWeeklySchedule(id) {
-      if (!confirm("確定刪除這筆固定班？")) return;
-      state.weeklySchedules = state.weeklySchedules.filter(item => item.id !== id);
-      saveState();
-      if (state.settings.apiUrl) {
-        await apiCall("deleteWeeklySchedule", { id });
-        await syncFromSheet();
-      } else renderAll();
-    }
-
-    async function addEmployee() {
-      const name = $("newEmployeeName").value.trim();
-      if (!name) return alert("請輸入員工姓名。");
-      const existing = state.employees.find(employee => employee.name === name);
-      const employee = {
-        id: existing?.id || `emp-${Date.now()}`,
-        name,
-        hourlyRate: Number($("newEmployeeRate").value) || 0,
-        workStart: $("newEmployeeStart").value || "06:30",
-        workEnd: $("newEmployeeEnd").value || "13:30",
-        inGrace: Number($("newEmployeeInGrace").value) || 0,
-        outGrace: Number($("newEmployeeOutGrace").value) || 0,
-        breakMinutes: Number($("newEmployeeBreak").value) || 0,
-        lineUserId: $("newEmployeeLineId").value.trim(),
-        active: true
+    async function saveEmployee() {
+      const payload = {
+        lineUserId: $("employeeLineIdInput").value.trim(),
+        name: $("employeeNameInput").value.trim(),
+        status: "啟用"
       };
-      state.employees = state.employees.filter(item => item.id !== employee.id);
-      state.employees.push(employee);
-      saveState();
-      if (state.settings.apiUrl) {
-        await apiCall("saveEmployee", employee);
+      if (!payload.name) return alert("請輸入員工姓名。");
+      try {
+        await apiCall("saveEmployee", payload);
+        $("employeeNameInput").value = "";
+        $("employeeLineIdInput").value = "";
         await syncFromSheet();
-      } else renderAll();
-      $("newEmployeeName").value = "";
-      $("newEmployeeLineId").value = "";
-      alert("員工已儲存。");
+        alert("員工已儲存。");
+      } catch (error) {
+        alert(`員工儲存失敗：${error.message}`);
+      }
     }
 
-    async function deleteEmployee(id) {
+    async function deleteEmployee(lineUserId) {
       if (!confirm("確定停用這位員工？")) return;
-      state.employees = state.employees.filter(employee => employee.id !== id);
-      saveState();
-      if (state.settings.apiUrl) await apiCall("deleteEmployee", { id });
-      renderAll();
+      await apiCall("deleteEmployee", { lineUserId });
+      await syncFromSheet();
     }
 
-    function renderEmployees() {
-      $("employeeList").innerHTML = state.employees.length ? state.employees.map(employee => `
-        <div class="list-row">
+    async function reviewRequest(requestId, status) {
+      const finalTimeInput = document.querySelector(`[data-final-time="${CSS.escape(requestId)}"]`);
+      const payload = {
+        requestId,
+        status,
+        finalTime: finalTimeInput ? finalTimeInput.value : ""
+      };
+      try {
+        await apiCall("reviewCorrectionRequest", payload);
+        await syncFromSheet();
+        alert(status === "approved" ? "已核准並寫入打卡紀錄。" : "已拒絕申請。");
+      } catch (error) {
+        alert(`審核失敗：${error.message}`);
+      }
+    }
+
+    function renderAdmin() {
+      renderSettings();
+      renderEmployeeList();
+      renderRequestReviewList();
+      renderLogTable();
+    }
+
+    function renderSettings() {
+      $("apiUrlInput").value = settings.apiUrl || "";
+      $("liffIdInput").value = settings.liffId || "";
+      $("siteNameInput").value = settings.siteName || "";
+      $("radiusInput").value = settings.radiusMeters || 100;
+      $("latInput").value = settings.latitude || "";
+      $("lngInput").value = settings.longitude || "";
+      $("adminPinInput").value = settings.adminPin || "1234";
+    }
+
+    function renderEmployeeList() {
+      $("employeeList").innerHTML = employees.length ? employees.map(employee => `
+        <div class="row">
           <div>
             <strong>${escapeHtml(employee.name)}</strong><br>
-            <small>預設 ${escapeHtml(employee.workStart)}-${escapeHtml(employee.workEnd)}｜容許 ${employee.inGrace}/${employee.outGrace} 分｜LINE：${employee.lineUserId ? "已綁定" : "未綁定"}</small>
+            <small>LINE ID：${escapeHtml(employee.lineUserId || "未綁定")}｜${escapeHtml(employee.status)}</small>
           </div>
-          <button class="btn red" type="button" data-delete-employee="${escapeHtml(employee.id)}">停用</button>
+          <button class="btn red" type="button" data-delete-employee="${escapeHtml(employee.lineUserId)}">停用</button>
         </div>
       `).join("") : `<div class="empty">尚未建立員工。</div>`;
     }
 
-    function renderSettings() {
-      $("apiUrlInput").value = state.settings.apiUrl || "";
-      $("liffIdInput").value = state.settings.liffId || "";
-      $("adminPinInput").value = state.settings.adminPin || "1234";
-      $("siteNameInput").value = state.settings.siteName || "";
-      $("radiusInput").value = state.settings.radiusMeters || 200;
-      $("latInput").value = state.settings.latitude || "";
-      $("lngInput").value = state.settings.longitude || "";
+    function renderRequestReviewList() {
+      const pending = requests.filter(request => request.status === "待審核");
+      $("requestReviewList").innerHTML = pending.length ? pending.map(request => `
+        <div class="row">
+          <div>
+            <strong>${escapeHtml(request.name)}｜${escapeHtml(request.date)}｜${escapeHtml(request.type)}</strong><br>
+            <small>員工自述：${escapeHtml(request.claimedTime)}｜原因：${escapeHtml(request.reason || "無")}</small>
+            <label style="margin-top:8px;">老闆確認最終時間</label>
+            <input type="time" value="${escapeHtml(request.claimedTime || "06:30")}" data-final-time="${escapeHtml(request.requestId)}">
+          </div>
+          <div class="actions">
+            <button class="btn primary" type="button" data-approve="${escapeHtml(request.requestId)}">核准</button>
+            <button class="btn red" type="button" data-reject="${escapeHtml(request.requestId)}">拒絕</button>
+          </div>
+        </div>
+      `).join("") : `<div class="empty">目前沒有待審核補卡申請。</div>`;
     }
 
-    async function saveSettings() {
-      state.settings = {
-        apiUrl: $("apiUrlInput").value.trim(),
-        liffId: $("liffIdInput").value.trim(),
-        adminPin: $("adminPinInput").value.trim() || "1234",
-        siteName: $("siteNameInput").value.trim() || "店面",
-        radiusMeters: Number($("radiusInput").value) || 200,
-        latitude: Number($("latInput").value) || DEFAULT_STATE.settings.latitude,
-        longitude: Number($("lngInput").value) || DEFAULT_STATE.settings.longitude
-      };
-      saveState();
-      if (state.settings.apiUrl) {
-        await apiCall("saveSettings", state.settings);
-        await syncFromSheet();
-      }
-      renderAll();
-      alert("設定已儲存。");
-    }
-
-    async function setCurrentLocationAsSite() {
-      const position = await getPosition();
-      if (!position.ok) return alert(position.message);
-      $("latInput").value = position.latitude.toFixed(6);
-      $("lngInput").value = position.longitude.toFixed(6);
-    }
-
-    function populateSelects() {
-      const options = state.employees.map(employee => `<option value="${escapeHtml(employee.id)}">${escapeHtml(employee.name)}</option>`).join("");
-      ["employeeSelect", "filterEmployee", "manualEmployee", "weeklyEmployee", "scheduleEmployee"].forEach(id => {
-        const select = $(id);
-        if (!select) return;
-        const current = select.value;
-        select.innerHTML = options;
-        if (state.employees.some(employee => employee.id === current)) select.value = current;
-      });
-    }
-
-    function switchPage(page) {
-      document.querySelectorAll(".main-nav .tab").forEach(tab => tab.classList.toggle("active", tab.dataset.page === page));
-      document.querySelectorAll(".page").forEach(section => section.classList.toggle("hidden", section.id !== `page-${page}`));
-      if (page === "admin") {
-        $("heroTitle").textContent = "管理者後台";
-        $("heroText").textContent = "輸入 PIN 後可看今日出勤、出勤明細、排班、員工與系統設定。";
-      } else {
-        renderEmployeeHome();
-      }
-    }
-
-    function switchAdminPage(page) {
-      document.querySelectorAll(".admin-nav .tab").forEach(tab => tab.classList.toggle("active", tab.dataset.adminPage === page));
-      document.querySelectorAll(".admin-page").forEach(section => section.classList.toggle("hidden", section.id !== `admin-${page}`));
+    function renderLogTable() {
+      const month = $("logMonthInput").value || nowParts().month;
+      const rows = logs.filter(log => log.date.startsWith(month)).sort((a, b) => `${b.date}${b.actualTime}`.localeCompare(`${a.date}${a.actualTime}`));
+      $("adminEmployeeCount").textContent = employees.length;
+      $("adminLogCount").textContent = rows.length;
+      $("adminPendingCount").textContent = requests.filter(request => request.status === "待審核").length;
+      $("logTable").innerHTML = rows.length ? rows.map(log => `
+        <tr>
+          <td>${escapeHtml(log.date)}</td>
+          <td>${escapeHtml(log.name)}</td>
+          <td>${escapeHtml(log.type)}</td>
+          <td>${escapeHtml(log.actualTime)}</td>
+          <td>${escapeHtml(log.roundedTime)}</td>
+          <td>${escapeHtml(log.note)}</td>
+        </tr>
+      `).join("") : `<tr><td colspan="6"><div class="empty">這個月沒有打卡紀錄。</div></td></tr>`;
     }
 
     function renderAll() {
-      populateSelects();
-      renderRequestFields();
-      renderEmployeeHome();
-      if (adminUnlocked) {
-        renderDashboard();
-        renderAdminRecords();
-        renderSchedules();
-        renderEmployees();
-        renderSettings();
+      renderEmployeeSelect();
+      if (adminUnlocked) renderAdmin();
+      if (!$("page-query").classList.contains("hidden")) refreshSummary();
+    }
+
+    function switchPage(page, type) {
+      document.querySelectorAll(".page").forEach(section => section.classList.toggle("hidden", section.id !== `page-${page}`));
+      document.querySelectorAll(".nav .tab").forEach(tab => {
+        const active = tab.dataset.page === page && (!type || tab.dataset.punchType === type);
+        tab.classList.toggle("active", active);
+      });
+      if (page === "punch") {
+        punchType = type || punchType || "上班";
+        $("heroTitle").textContent = `${punchType}打卡`;
+        $("punchTitle").textContent = `${punchType}打卡`;
+        $("punchTypeLabel").textContent = punchType;
+        locate();
+      }
+      if (page === "query") {
+        $("heroTitle").textContent = "當月總工時";
+        $("heroText").textContent = "員工端只顯示當月總工時，不顯示每日明細。";
+        refreshSummary();
+      }
+      if (page === "admin") {
+        $("heroTitle").textContent = "管理端";
+        $("heroText").textContent = "管理者可設定 GPS、維護員工、審核補卡與查看打卡紀錄。";
       }
     }
 
-    function exportCsv() {
-      const month = $("filterMonth").value || todayParts().month;
-      const employeeId = $("filterEmployee").value;
-      const rows = state.records.filter(record => sameMonth(record.date, month) && (!employeeId || record.employeeId === employeeId));
-      const header = ["日期", "員工", "上班", "上班狀態", "下班", "下班狀態", "工時", "距離", "備註"];
-      const csvRows = [header, ...rows.map(record => [record.date, record.employeeName, record.inActual, record.inStatus, record.outActual, record.outStatus, record.hours, record.distance, record.note])];
-      const csv = "\ufeff" + csvRows.map(row => row.map(cell => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
-      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `line-clock-records-${month}.csv`;
-      link.click();
-      URL.revokeObjectURL(url);
-    }
-
-    function clearLocalData() {
-      if (!confirm("只會清除本機暫存，不會刪除 Google Sheet。確定？")) return;
-      localStorage.removeItem(STORE_KEY);
-      state = loadState();
-      renderAll();
-    }
-
     function handleLaunchAction() {
-      const action = new URLSearchParams(location.search).get("action");
-      if (action === "clock-in") return clock("in");
-      if (action === "clock-out") return clock("out");
-      if (action === "request") return switchPage("request");
+      const params = new URLSearchParams(location.search);
+      const type = params.get("type");
+      const action = params.get("action");
+      if (type === "on" || action === "clock-in") return switchPage("punch", "上班");
+      if (type === "off" || action === "clock-out") return switchPage("punch", "下班");
+      if (type === "query") return switchPage("query");
+      if (action === "request") {
+        switchPage("query");
+        $("requestPanel").classList.remove("hidden");
+      }
+      return switchPage("punch", "上班");
     }
 
     function escapeHtml(value) {
@@ -1770,87 +1015,41 @@
     }
 
     function bindEvents() {
-      document.querySelectorAll(".main-nav .tab").forEach(tab => tab.addEventListener("click", () => switchPage(tab.dataset.page)));
-      document.querySelectorAll(".admin-nav .tab").forEach(tab => tab.addEventListener("click", () => switchAdminPage(tab.dataset.adminPage)));
-      document.querySelectorAll("[data-quick]").forEach(button => button.addEventListener("click", () => {
-        const action = button.dataset.quick;
-        if (action === "clock-in") return clock("in");
-        if (action === "clock-out") return clock("out");
-        switchPage("request");
-      }));
-      $("primaryClockBtn").addEventListener("click", () => clock($("primaryClockBtn").dataset.clockType || "in"));
-      $("bindLineBtn").addEventListener("click", bindCurrentLineUser);
-      $("employeeSelect").addEventListener("change", renderEmployeeHome);
-      $("requestType").addEventListener("change", renderRequestFields);
-      $("submitRequestBtn").addEventListener("click", submitRequest);
+      document.querySelectorAll(".nav .tab").forEach(tab => {
+        tab.addEventListener("click", () => switchPage(tab.dataset.page, tab.dataset.punchType));
+      });
+      $("employeeSelect").addEventListener("change", () => {
+        if (!$("page-query").classList.contains("hidden")) refreshSummary();
+      });
+      $("confirmPunchBtn").addEventListener("click", confirmPunch);
+      $("refreshSummaryBtn").addEventListener("click", refreshSummary);
+      $("openRequestBtn").addEventListener("click", () => $("requestPanel").classList.toggle("hidden"));
+      $("submitRequestBtn").addEventListener("click", submitCorrectionRequest);
       $("unlockAdminBtn").addEventListener("click", unlockAdmin);
-      $("approvalList").addEventListener("click", event => {
-        const approve = event.target.closest("[data-approve-request]");
-        const reject = event.target.closest("[data-reject-request]");
-        if (approve) reviewRequest(approve.dataset.approveRequest, "approved");
-        if (reject) reviewRequest(reject.dataset.rejectRequest, "rejected");
-      });
-      $("filterEmployee").addEventListener("change", renderAdminRecords);
-      $("filterMonth").addEventListener("change", renderAdminRecords);
-      $("adminCalendar").addEventListener("click", event => {
-        const day = event.target.closest("[data-manual-date]");
-        if (day) prepareManualClock(day.dataset.manualDate, day.dataset.manualType);
-      });
-      $("manualClockBtn").addEventListener("click", manualClock);
-      $("addEmployeeBtn").addEventListener("click", addEmployee);
+      $("saveSettingsBtn").addEventListener("click", saveSettings);
+      $("useCurrentLocationBtn").addEventListener("click", setCurrentLocationAsSite);
+      $("saveEmployeeBtn").addEventListener("click", saveEmployee);
+      $("refreshAdminBtn").addEventListener("click", syncFromSheet);
+      $("logMonthInput").addEventListener("change", renderLogTable);
       $("employeeList").addEventListener("click", event => {
         const button = event.target.closest("[data-delete-employee]");
         if (button) deleteEmployee(button.dataset.deleteEmployee);
       });
-      $("weeklyEmployee").addEventListener("change", () => { updateScheduleDefaults("weekly", $("weeklyEmployee").value); renderSchedules(); });
-      $("scheduleEmployee").addEventListener("change", () => { updateScheduleDefaults("schedule", $("scheduleEmployee").value); selectedScheduleDates.clear(); renderSchedules(); });
-      $("scheduleMonth").addEventListener("change", () => { selectedScheduleDates.clear(); renderSchedules(); });
-      $("scheduleCalendar").addEventListener("click", event => {
-        const day = event.target.closest("[data-schedule-date]");
-        if (!day) return;
-        const date = day.dataset.scheduleDate;
-        if (selectedScheduleDates.has(date)) selectedScheduleDates.delete(date);
-        else selectedScheduleDates.add(date);
-        renderSchedules();
-      });
-      $("saveWeeklyScheduleBtn").addEventListener("click", saveWeeklySchedule);
-      $("saveScheduleBtn").addEventListener("click", saveSchedule);
-      $("clearScheduleSelectionBtn").addEventListener("click", () => { selectedScheduleDates.clear(); renderSchedules(); });
-      $("weeklyScheduleList").addEventListener("click", event => {
-        const button = event.target.closest("[data-delete-weekly-schedule]");
-        if (button) deleteWeeklySchedule(button.dataset.deleteWeeklySchedule);
-      });
-      $("scheduleList").addEventListener("click", event => {
-        const button = event.target.closest("[data-delete-schedule]");
-        if (button) deleteSchedule(button.dataset.deleteSchedule);
-      });
-      $("saveSettingsBtn").addEventListener("click", saveSettings);
-      $("useCurrentLocationBtn").addEventListener("click", setCurrentLocationAsSite);
-      $("refreshBtn").addEventListener("click", syncFromSheet);
-      $("clearLocalBtn").addEventListener("click", clearLocalData);
-      $("exportCsvBtn").addEventListener("click", exportCsv);
-      $("employeeCalendar").addEventListener("click", event => {
-        const day = event.target.closest("[data-detail-date]");
-        if (!day) return;
-        const employee = currentEmployee();
-        const record = recordFor(employee.id, day.dataset.detailDate);
-        const shift = employeeSchedule(employee, day.dataset.detailDate);
-        $("employeeDayDetail").classList.remove("hidden");
-        $("employeeDayDetail").innerHTML = `<strong>${day.dataset.detailDate}</strong><br>班表 ${shift.type === "leave" ? "請假" : `${shift.start}-${shift.end}`}<br>上班 ${record?.inActual || "--"}，下班 ${record?.outActual || "--"}，工時 ${Number(record?.hours || 0).toFixed(2)}`;
+      $("requestReviewList").addEventListener("click", event => {
+        const approve = event.target.closest("[data-approve]");
+        const reject = event.target.closest("[data-reject]");
+        if (approve) reviewRequest(approve.dataset.approve, "approved");
+        if (reject) reviewRequest(reject.dataset.reject, "rejected");
       });
     }
 
     async function init() {
-      $("requestDate").value = todayParts().date;
-      $("filterMonth").value = todayParts().month;
-      $("scheduleMonth").value = todayParts().month;
-      $("manualDate").value = todayParts().date;
+      $("requestDate").value = nowParts().date;
+      $("logMonthInput").value = nowParts().month;
       bindEvents();
       updateClock();
       setInterval(updateClock, 1000);
-      renderAll();
       await Promise.allSettled([initLineProfile(), syncFromSheet()]);
-      renderAll();
       handleLaunchAction();
     }
 
