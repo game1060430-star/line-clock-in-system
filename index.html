@@ -32,7 +32,7 @@
     }
     button, input, select, textarea { font: inherit; max-width: 100%; min-width: 0; }
     button { cursor: pointer; }
-    .app { width: min(980px, 100%); margin: 0 auto; padding: 12px; }
+    .app { width: min(980px, 100%); margin: 0 auto; padding: 12px 12px 92px; }
     .topbar {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -93,15 +93,20 @@
     .hero h2 { margin-bottom: 5px; font-size: 22px; }
     .hero p { margin-bottom: 0; font-size: 13px; line-height: 1.6; color: rgba(255,255,255,0.9); }
     .nav {
+      position: fixed;
+      left: 50%;
+      bottom: 0;
+      z-index: 40;
+      width: min(980px, 100%);
+      transform: translateX(-50%);
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
-      position: sticky;
-      top: 0;
-      z-index: 10;
-      padding: 7px 0;
-      background: var(--bg);
-      margin-bottom: 10px;
+      padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+      background: rgba(245, 247, 244, 0.96);
+      border-top: 1px solid var(--line);
+      box-shadow: 0 -8px 24px rgba(23, 33, 27, 0.08);
+      backdrop-filter: blur(10px);
     }
     .tab {
       min-height: 44px;
@@ -318,11 +323,11 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .hidden { display: none !important; }
     @media (max-width: 760px) {
-      .app { padding: 8px; }
+      .app { padding: 8px 8px 128px; }
       .topbar { grid-template-columns: 1fr; }
       .profile { width: 100%; }
       .profile strong, .profile span { white-space: normal; }
-      .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-left: 8px; padding-right: 8px; }
       .grid, .grid-3 { grid-template-columns: 1fr; }
       .panel { padding: 10px; }
       .table-wrap { overflow-x: visible; }
@@ -350,7 +355,7 @@
         <div class="mark">LINE</div>
         <div>
           <h1>LINE GPS 打卡系統</h1>
-          <p class="subtitle">30 分鐘歸整工時，Google Sheet 資料庫</p>
+          <p class="subtitle hidden"></p>
         </div>
       </div>
       <div class="profile">
@@ -364,7 +369,7 @@
 
     <section class="hero">
       <h2 id="heroTitle">GPS 打卡</h2>
-      <p id="heroText">所有打卡時間會自動歸入最接近的 30 分鐘格子，例如 06:16 至 06:45 會歸入 06:30。</p>
+      <p id="heroText" class="hidden"></p>
     </section>
 
     <nav class="nav" aria-label="主功能">
@@ -379,6 +384,7 @@
         <div class="panel">
           <h3 id="punchTitle">上班打卡</h3>
           <div class="grid">
+            <button id="confirmPunchBtn" class="btn primary span-2" type="button" disabled>確認打卡</button>
             <div class="clock-face span-2">
               <div>
                 <div id="timeNow" class="time-now">--:--:--</div>
@@ -395,16 +401,12 @@
               <div id="punchTypeLabel" class="hint">上班</div>
             </div>
             <div class="span-2">
-              <div id="roundHint" class="hint">系統提示：目前時間將歸入 --:-- 班段。</div>
-            </div>
-            <div class="span-2">
               <div id="gpsStatus" class="hint warn">GPS 定位中...</div>
             </div>
             <div class="span-2">
               <label for="punchNote">備註</label>
               <textarea id="punchNote" placeholder="特殊狀況再填，例如定位飄移。"></textarea>
             </div>
-            <button id="confirmPunchBtn" class="btn primary span-2" type="button" disabled>確認打卡</button>
           </div>
         </div>
       </section>
@@ -691,7 +693,6 @@
       const parts = nowParts();
       $("timeNow").textContent = parts.time;
       $("dateNow").textContent = parts.now.toLocaleDateString("zh-TW", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-      $("roundHint").textContent = `系統提示：目前時間將歸入 ${roundToNearestHalfHour(parts.time)} 班段。`;
     }
 
     function roundToNearestHalfHour(timeText) {
@@ -984,11 +985,11 @@
         gpsInRange = currentDistance <= Number(settings.radiusMeters || 100);
         if (gpsInRange) {
           $("gpsStatus").className = "hint";
-          $("gpsStatus").textContent = `已進入打卡範圍，距離約 ${Math.round(currentDistance)} 公尺。`;
+          $("gpsStatus").textContent = `範圍內｜${Math.round(currentDistance)} 公尺`;
           $("confirmPunchBtn").disabled = false;
         } else {
           $("gpsStatus").className = "hint bad";
-          $("gpsStatus").textContent = `超出打卡範圍，距離約 ${Math.round(currentDistance)} 公尺，允許範圍 ${settings.radiusMeters} 公尺。仍可送出，但會標記範圍外。`;
+          $("gpsStatus").textContent = `範圍外｜${Math.round(currentDistance)} 公尺`;
           $("confirmPunchBtn").disabled = false;
         }
       }, error => {
@@ -1424,7 +1425,7 @@
       }
       if (page === "admin") {
         $("heroTitle").textContent = "管理端";
-        $("heroText").textContent = "管理者可設定 GPS、維護員工、審核補卡與查看打卡紀錄。";
+        $("heroText").textContent = "";
         if (isCurrentUserAdmin()) openAdminArea();
       }
     }
