@@ -223,6 +223,31 @@
     .badge.ok { background: var(--soft-green); color: var(--primary-dark); }
     .badge.warn { background: var(--soft-amber); color: var(--amber); }
     .badge.bad { background: var(--soft-red); color: var(--red); }
+    .badge.off { background: #e0e7ff; color: #3730a3; }
+    .dashboard-list { display: grid; gap: 8px; }
+    .dashboard-row {
+      border: 1px solid var(--line);
+      border-left: 6px solid #cbd5e1;
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .dashboard-row.working { border-left-color: var(--amber); background: #fffbeb; }
+    .dashboard-row.done { border-left-color: #3730a3; background: #eef2ff; }
+    .dashboard-row.absent { border-left-color: #94a3b8; background: #f8fafc; color: #64748b; }
+    .dashboard-times {
+      margin-top: 4px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
     .list { display: grid; gap: 8px; }
     .row {
       border: 1px solid var(--line);
@@ -441,6 +466,16 @@
         </div>
 
         <div id="adminArea" class="hidden">
+          <div class="panel">
+            <h3>今日即時儀表板</h3>
+            <div class="grid-3" style="margin-bottom:10px;">
+              <div class="stat"><span>已上班</span><b id="todayClockInCount">0</b></div>
+              <div class="stat"><span>上班中</span><b id="todayWorkingCount">0</b></div>
+              <div class="stat"><span>未上班</span><b id="todayAbsentCount">0</b></div>
+            </div>
+            <div id="todayDashboard" class="dashboard-list"></div>
+          </div>
+
           <div class="panel">
             <h3>系統設定</h3>
             <div class="grid">
@@ -1193,6 +1228,27 @@
       }
     }
 
+    async function updateLogTime(logId) {
+      if (!logId) return alert("這筆舊紀錄沒有紀錄ID，無法修改。");
+      const input = document.querySelector(`[data-log-time="${CSS.escape(logId)}"]`);
+      const actualTime = input?.value || "";
+      if (!actualTime) return alert("請輸入時間。");
+      try {
+        const result = await apiCall("updateClockLogTime", { logId, actualTime });
+        logs = logs.map(log => log.logId === logId ? Object.assign({}, log, {
+          actualTime: result.actualTime,
+          roundedTime: result.roundedTime,
+          note: log.note.includes("管理者修改時間") ? log.note : [log.note, "管理者修改時間"].filter(Boolean).join("；")
+        }) : log);
+        saveCachedData();
+        renderAdmin();
+        alert("打卡時間已修改，工時已重新計算。");
+        syncFromSheet();
+      } catch (error) {
+        alert(`修改時間失敗：${error.message}`);
+      }
+    }
+
     async function deleteEmployee(lineUserId) {
       if (!confirm("確定停用這位員工？")) return;
       await apiCall("deleteEmployee", { lineUserId });
@@ -1229,6 +1285,7 @@
 
     function renderAdmin() {
       renderSettings();
+      renderTodayDashboard();
       renderEmployeeList();
       renderManualEmployeeSelect();
       renderRequestReviewList();
@@ -1284,6 +1341,38 @@
       `).join("") : `<div class="empty">目前沒有待審核補卡申請。</div>`;
     }
 
+    function renderTodayDashboard() {
+      const today = nowParts().date;
+      const activeEmployees = employees.filter(employee => employee.status !== "停用");
+      const todayLogs = logs.filter(log => log.date === today && log.status !== "取消");
+      const rows = activeEmployees.map(employee => {
+        const employeeLogs = todayLogs.filter(log => log.lineUserId === employee.lineUserId || (!employee.lineUserId && log.name === employee.name));
+        const ins = employeeLogs.filter(log => log.type === "上班").sort((a, b) => a.actualTime.localeCompare(b.actualTime));
+        const outs = employeeLogs.filter(log => log.type === "下班").sort((a, b) => a.actualTime.localeCompare(b.actualTime));
+        const inTime = ins[0]?.actualTime || "";
+        const outTime = outs[outs.length - 1]?.actualTime || "";
+        const state = inTime && outTime ? "done" : (inTime ? "working" : "absent");
+        const label = state === "done" ? "已下班" : (state === "working" ? "上班中" : "未上班");
+        const badge = state === "done" ? "off" : (state === "working" ? "warn" : "bad");
+        return { employee, inTime, outTime, state, label, badge };
+      });
+      $("todayClockInCount").textContent = rows.filter(row => row.inTime).length;
+      $("todayWorkingCount").textContent = rows.filter(row => row.state === "working").length;
+      $("todayAbsentCount").textContent = rows.filter(row => row.state === "absent").length;
+      $("todayDashboard").innerHTML = rows.length ? rows.map(row => `
+        <div class="dashboard-row ${row.state}">
+          <div>
+            <strong>${escapeHtml(row.employee.name || "未命名員工")}</strong>
+            <div class="dashboard-times">
+              <span>上班：${escapeHtml(row.inTime || "--:--")}</span>
+              <span>下班：${escapeHtml(row.outTime || "--:--")}</span>
+            </div>
+          </div>
+          <span class="badge ${row.badge}">${row.label}</span>
+        </div>
+      `).join("") : `<div class="empty">尚未建立員工。</div>`;
+    }
+
     function renderLogTable() {
       const month = $("logMonthInput").value || nowParts().month;
       const date = $("logDateInput").value;
@@ -1296,11 +1385,12 @@
           <td>${escapeHtml(log.date)}</td>
           <td>${escapeHtml(log.name)}</td>
           <td>${escapeHtml(log.type)}</td>
-          <td>${escapeHtml(log.actualTime)}</td>
+          <td><input type="time" value="${escapeHtml(log.actualTime)}" data-log-time="${escapeHtml(log.logId)}"></td>
           <td>${escapeHtml(log.roundedTime)}</td>
           <td><span class="badge ${log.status === "取消" ? "bad" : (log.note.includes("範圍外") ? "warn" : "ok")}">${escapeHtml(log.status === "取消" ? "取消" : (log.note.includes("範圍外") ? "範圍外納入" : "納入"))}</span></td>
           <td>${escapeHtml(log.note)}</td>
           <td>
+            <button class="btn blue" type="button" data-log-time-save="${escapeHtml(log.logId)}">儲存時間</button>
             <button class="btn ${log.status === "取消" ? "primary" : "red"}" type="button" data-log-status="${escapeHtml(log.logId)}" data-status="${log.status === "取消" ? "active" : "cancelled"}">${log.status === "取消" ? "恢復納入" : "取消納入"}</button>
           </td>
         </tr>
@@ -1398,6 +1488,8 @@
         if (reject) reviewRequest(reject.dataset.reject, "rejected");
       });
       $("logTable").addEventListener("click", event => {
+        const timeButton = event.target.closest("[data-log-time-save]");
+        if (timeButton) updateLogTime(timeButton.dataset.logTimeSave);
         const button = event.target.closest("[data-log-status]");
         if (button) updateLogStatus(button.dataset.logStatus, button.dataset.status);
       });

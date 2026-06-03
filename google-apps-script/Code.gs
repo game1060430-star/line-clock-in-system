@@ -41,6 +41,7 @@ function doPost(e) {
     if (action === 'saveCorrectionRequest') return jsonOutput({ ok: true, payload: saveCorrectionRequest(payload) });
     if (action === 'reviewCorrectionRequest') return jsonOutput({ ok: true, payload: reviewCorrectionRequest(payload) });
     if (action === 'updateClockLogStatus') return jsonOutput({ ok: true, payload: updateClockLogStatus(payload) });
+    if (action === 'updateClockLogTime') return jsonOutput({ ok: true, payload: updateClockLogTime(payload) });
     return jsonOutput({ ok: false, error: 'Unknown action: ' + action });
   } catch (error) {
     return jsonOutput({ ok: false, error: String(error && error.message ? error.message : error) });
@@ -237,6 +238,34 @@ function updateClockLogStatus(payload) {
     if (rows[i][idIndex] === logId) {
       sheet.getRange(i + 1, statusIndex + 1).setValue(status);
       return { logId: logId, status: status };
+    }
+  }
+  throw new Error('Clock log not found');
+}
+
+function updateClockLogTime(payload) {
+  const logId = payload.logId;
+  const actualTime = normalizeTime(payload.actualTime);
+  if (!logId) throw new Error('Log ID is required');
+  if (!actualTime) throw new Error('Actual time is required');
+  const sheet = getSpreadsheet().getSheetByName(SHEETS.LOGS);
+  const rows = sheet.getDataRange().getValues();
+  const headers = HEADERS[SHEETS.LOGS];
+  const idIndex = headers.indexOf('紀錄ID');
+  const actualIndex = headers.indexOf('實際打卡時間');
+  const roundedIndex = headers.indexOf('系統修正時間(30分單位)');
+  const noteIndex = headers.indexOf('備註/來源(正常打卡/管理者補卡)');
+  if (idIndex < 0 || actualIndex < 0 || roundedIndex < 0) throw new Error('Clock log time columns are missing');
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][idIndex] === logId) {
+      const roundedTime = roundToNearestHalfHour(actualTime);
+      const note = String(noteIndex >= 0 ? rows[i][noteIndex] : '');
+      sheet.getRange(i + 1, actualIndex + 1).setValue(actualTime);
+      sheet.getRange(i + 1, roundedIndex + 1).setValue(roundedTime);
+      if (noteIndex >= 0 && !note.includes('管理者修改時間')) {
+        sheet.getRange(i + 1, noteIndex + 1).setValue([note, '管理者修改時間'].filter(Boolean).join('；'));
+      }
+      return { logId: logId, actualTime: actualTime, roundedTime: roundedTime };
     }
   }
   throw new Error('Clock log not found');
