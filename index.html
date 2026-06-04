@@ -633,6 +633,10 @@
             <h3>打卡紀錄</h3>
             <div class="grid" style="margin-bottom:10px;">
               <div>
+                <label for="logEmployeeSelect">員工</label>
+                <select id="logEmployeeSelect"></select>
+              </div>
+              <div>
                 <label for="logMonthInput">月份</label>
                 <input id="logMonthInput" type="month">
               </div>
@@ -936,6 +940,16 @@
 
     function isActiveEmployee(employee) {
       return employee?.status === "啟用";
+    }
+
+    function employeeKey(employee) {
+      if (!employee) return "";
+      return employee.lineUserId ? `id:${employee.lineUserId}` : `name:${employee.name || ""}`;
+    }
+
+    function recordEmployeeKey(record) {
+      if (!record) return "";
+      return record.lineUserId ? `id:${record.lineUserId}` : `name:${record.name || ""}`;
     }
 
     function minutesFromTime(timeText) {
@@ -1551,6 +1565,7 @@
       renderAdminHoursList();
       renderEmployeeList();
       renderManualEmployeeSelect();
+      renderLogEmployeeSelect();
       renderRequestReviewList();
       renderLogTable();
       renderAdminSection();
@@ -1596,9 +1611,20 @@
     }
 
     function renderManualEmployeeSelect() {
+      const current = $("manualEmployeeSelect").value;
       $("manualEmployeeSelect").innerHTML = employees.length
         ? employees.map((employee, index) => `<option value="${index}">${escapeHtml(employee.name || "(未命名)")}${employee.lineUserId ? "" : "（未綁定）"}</option>`).join("")
         : `<option value="">尚未建立員工</option>`;
+      if (current && Number(current) < employees.length) $("manualEmployeeSelect").value = current;
+    }
+
+    function renderLogEmployeeSelect() {
+      const current = $("logEmployeeSelect").value;
+      $("logEmployeeSelect").innerHTML = `<option value="">全部員工</option>` + employees
+        .filter(employee => employee.status !== "停用")
+        .map(employee => `<option value="${escapeHtml(employeeKey(employee))}">${escapeHtml(employee.name || "(未命名)")}</option>`)
+        .join("");
+      if (current) $("logEmployeeSelect").value = current;
     }
 
     function renderRequestReviewList() {
@@ -1674,7 +1700,27 @@
     function renderLogTable() {
       const month = $("logMonthInput").value || nowParts().month;
       const date = $("logDateInput").value;
-      const rows = logs.filter(log => date ? log.date === date : log.date.startsWith(month)).sort((a, b) => `${b.date}${b.actualTime}`.localeCompare(`${a.date}${a.actualTime}`));
+      const employeeFilter = $("logEmployeeSelect").value;
+      const logRows = logs
+        .filter(log => date ? log.date === date : log.date.startsWith(month))
+        .filter(log => !employeeFilter || recordEmployeeKey(log) === employeeFilter)
+        .map(log => Object.assign({ rowKind: "log" }, log));
+      const requestRows = requests
+        .filter(request => date ? request.date === date : request.date.startsWith(month))
+        .filter(request => !employeeFilter || recordEmployeeKey(request) === employeeFilter)
+        .map(request => ({
+          rowKind: "request",
+          logId: "",
+          lineUserId: request.lineUserId,
+          name: request.name,
+          date: request.date,
+          type: `${request.type}補卡`,
+          actualTime: request.claimedTime,
+          roundedTime: roundToNearestHalfHour(request.claimedTime),
+          status: request.status,
+          note: request.reason || "補卡申請"
+        }));
+      const rows = logRows.concat(requestRows).sort((a, b) => `${b.date}${b.actualTime}`.localeCompare(`${a.date}${a.actualTime}`));
       $("adminEmployeeCount").textContent = employees.length;
       $("adminLogCount").textContent = rows.length;
       $("adminPendingCount").textContent = requests.filter(request => request.status === "待審核").length;
@@ -1683,13 +1729,15 @@
           <td>${escapeHtml(log.date)}</td>
           <td>${escapeHtml(log.name)}<br><small>${escapeHtml(log.lineUserId || "未綁定")}</small></td>
           <td>${escapeHtml(log.type)}</td>
-          <td><input type="time" value="${escapeHtml(log.actualTime)}" data-log-time="${escapeHtml(log.logId)}"></td>
+          <td>${log.rowKind === "log" ? `<input type="time" value="${escapeHtml(log.actualTime)}" data-log-time="${escapeHtml(log.logId)}">` : escapeHtml(log.actualTime)}</td>
           <td>${escapeHtml(log.roundedTime)}</td>
-          <td><span class="badge ${log.status === "取消" ? "bad" : (log.note.includes("範圍外") ? "warn" : "ok")}">${escapeHtml(log.status === "取消" ? "取消" : (log.note.includes("範圍外") ? "範圍外納入" : "納入"))}</span></td>
+          <td><span class="badge ${log.status === "取消" || log.status === "已拒絕" ? "bad" : (log.status === "待審核" || log.note.includes("範圍外") ? "warn" : "ok")}">${escapeHtml(log.rowKind === "request" ? log.status : (log.status === "取消" ? "取消" : (log.note.includes("範圍外") ? "範圍外納入" : "納入")))}</span></td>
           <td>${escapeHtml(log.note)}</td>
           <td>
-            <button class="btn blue" type="button" data-log-time-save="${escapeHtml(log.logId)}">儲存時間</button>
-            <button class="btn ${log.status === "取消" ? "primary" : "red"}" type="button" data-log-status="${escapeHtml(log.logId)}" data-status="${log.status === "取消" ? "active" : "cancelled"}">${log.status === "取消" ? "恢復納入" : "取消納入"}</button>
+            ${log.rowKind === "log" ? `
+              <button class="btn blue" type="button" data-log-time-save="${escapeHtml(log.logId)}">儲存時間</button>
+              <button class="btn ${log.status === "取消" ? "primary" : "red"}" type="button" data-log-status="${escapeHtml(log.logId)}" data-status="${log.status === "取消" ? "active" : "cancelled"}">${log.status === "取消" ? "恢復納入" : "取消納入"}</button>
+            ` : `<span class="badge warn">補卡資料</span>`}
           </td>
         </tr>
       `).join("") : `<tr><td colspan="8"><div class="empty">${date ? "這一天" : "這個月"}沒有打卡紀錄。</div></td></tr>`;
@@ -1784,6 +1832,7 @@
       });
       $("refreshAdminHoursBtn").addEventListener("click", renderAdminHoursList);
       $("adminHoursMonthInput").addEventListener("change", renderAdminHoursList);
+      $("logEmployeeSelect").addEventListener("change", renderLogTable);
       $("logMonthInput").addEventListener("change", () => {
         $("logDateInput").value = "";
         renderLogTable();
