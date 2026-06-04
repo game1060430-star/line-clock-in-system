@@ -852,6 +852,22 @@
       return data.payload;
     }
 
+    async function withButtonBusy(button, label, task) {
+      if (!button) return task();
+      if (button.dataset.busy === "true") return;
+      const originalText = button.textContent;
+      button.dataset.busy = "true";
+      button.disabled = true;
+      button.textContent = label || "處理中...";
+      try {
+        return await task();
+      } finally {
+        button.disabled = false;
+        button.textContent = originalText;
+        delete button.dataset.busy;
+      }
+    }
+
     async function syncFromSheet() {
       try {
         const data = await apiCall("getBootstrap");
@@ -1345,7 +1361,8 @@
       saveLocalSettings();
       try {
         await apiCall("saveSettings", settings);
-        await syncFromSheet();
+        renderAdmin();
+        syncFromSheet();
         alert("設定已儲存。");
       } catch (error) {
         alert(`設定儲存失敗：${error.message}`);
@@ -1370,10 +1387,14 @@
       if (!payload.name) return alert("請輸入員工姓名。");
       try {
         await apiCall("saveEmployee", payload);
+        employees = employees.filter(employee => employee.lineUserId !== payload.lineUserId && employee.name !== payload.name);
+        employees.push(payload);
+        saveCachedData();
         $("employeeNameInput").value = "";
         $("employeeLineIdInput").value = "";
         $("employeeRoleInput").value = "員工";
-        await syncFromSheet();
+        renderAdmin();
+        syncFromSheet();
         alert("員工已儲存。");
       } catch (error) {
         alert(`員工儲存失敗：${error.message}`);
@@ -1395,9 +1416,10 @@
       };
       if (!payload.date || !payload.actualTime) return alert("請填日期與時間。");
       try {
-        await apiCall("clock", payload);
+        const result = await apiCall("clock", payload);
+        upsertLocalClock(result);
         $("manualNote").value = "";
-        await syncFromSheet();
+        syncFromSheet();
         alert("補打卡已新增，工時已重新計算。");
       } catch (error) {
         alert(`補打卡失敗：${error.message}`);
@@ -1409,8 +1431,11 @@
       const label = status === "cancelled" ? "取消納入" : "恢復納入";
       if (!confirm(`確定要${label}這筆打卡？`)) return;
       try {
-        await apiCall("updateClockLogStatus", { logId, status });
-        await syncFromSheet();
+        const result = await apiCall("updateClockLogStatus", { logId, status });
+        logs = logs.map(log => log.logId === logId ? Object.assign({}, log, { status: result.status }) : log);
+        saveCachedData();
+        renderAdmin();
+        syncFromSheet();
         alert(`已${label}，工時已重新計算。`);
       } catch (error) {
         alert(`操作失敗：${error.message}`);
@@ -1465,7 +1490,10 @@
     async function deleteEmployee(lineUserId) {
       if (!confirm("確定刪除這位員工？刪除後不會再顯示。")) return;
       await apiCall("deleteEmployee", { lineUserId });
-      await syncFromSheet();
+      employees = employees.filter(employee => employee.lineUserId !== lineUserId);
+      saveCachedData();
+      renderAdmin();
+      syncFromSheet();
     }
 
     async function approveEmployee(index) {
@@ -1473,7 +1501,10 @@
       if (!employee) return alert("找不到員工。");
       try {
         await apiCall("saveEmployee", { lineUserId: employee.lineUserId, name: employee.name, status: "啟用", role: employee.role || "員工" });
-        await syncFromSheet();
+        employees = employees.map(item => item.lineUserId === employee.lineUserId ? Object.assign({}, item, { status: "啟用" }) : item);
+        saveCachedData();
+        renderAdmin();
+        syncFromSheet();
         alert(`${employee.name} 已核准，可以開始打卡。`);
       } catch (error) {
         alert(`核准失敗：${error.message}`);
@@ -1485,7 +1516,10 @@
       if (!employee) return alert("找不到員工。");
       try {
         await apiCall("saveEmployee", { lineUserId: employee.lineUserId, name: employee.name, status: employee.status || "啟用", role });
-        await syncFromSheet();
+        employees = employees.map(item => item.lineUserId === employee.lineUserId ? Object.assign({}, item, { role }) : item);
+        saveCachedData();
+        renderAdmin();
+        syncFromSheet();
         alert(`${employee.name} 已設為${role}。`);
       } catch (error) {
         alert(`權限設定失敗：${error.message}`);
@@ -1501,7 +1535,10 @@
       };
       try {
         await apiCall("reviewCorrectionRequest", payload);
-        await syncFromSheet();
+        requests = requests.map(request => request.requestId === requestId ? Object.assign({}, request, { status: status === "approved" ? "已核准" : "已拒絕" }) : request);
+        saveCachedData();
+        renderAdmin();
+        syncFromSheet();
         alert(status === "approved" ? "已核准並寫入打卡紀錄。" : "已拒絕申請。");
       } catch (error) {
         alert(`審核失敗：${error.message}`);
@@ -1734,13 +1771,13 @@
       $("confirmPunchBtn").addEventListener("click", confirmPunch);
       $("refreshSummaryBtn").addEventListener("click", refreshSummary);
       $("openRequestBtn").addEventListener("click", () => $("requestPanel").classList.toggle("hidden"));
-      $("submitRequestBtn").addEventListener("click", submitCorrectionRequest);
+      $("submitRequestBtn").addEventListener("click", event => withButtonBusy(event.currentTarget, "送出中...", submitCorrectionRequest));
       $("unlockAdminBtn").addEventListener("click", unlockAdmin);
-      $("saveSettingsBtn").addEventListener("click", saveSettings);
-      $("useCurrentLocationBtn").addEventListener("click", setCurrentLocationAsSite);
-      $("saveEmployeeBtn").addEventListener("click", saveEmployee);
-      $("manualClockBtn").addEventListener("click", manualClock);
-      $("refreshAdminBtn").addEventListener("click", syncFromSheet);
+      $("saveSettingsBtn").addEventListener("click", event => withButtonBusy(event.currentTarget, "寫入中...", saveSettings));
+      $("useCurrentLocationBtn").addEventListener("click", event => withButtonBusy(event.currentTarget, "定位中...", setCurrentLocationAsSite));
+      $("saveEmployeeBtn").addEventListener("click", event => withButtonBusy(event.currentTarget, "寫入中...", saveEmployee));
+      $("manualClockBtn").addEventListener("click", event => withButtonBusy(event.currentTarget, "寫入中...", manualClock));
+      $("refreshAdminBtn").addEventListener("click", event => withButtonBusy(event.currentTarget, "同步中...", syncFromSheet));
       $("adminMenu").addEventListener("click", event => {
         const button = event.target.closest("[data-admin-tab]");
         if (button) switchAdminSection(button.dataset.adminTab);
@@ -1758,23 +1795,23 @@
       });
       $("employeeList").addEventListener("click", event => {
         const button = event.target.closest("[data-delete-employee]");
-        if (button) deleteEmployee(button.dataset.deleteEmployee);
+        if (button) withButtonBusy(button, "刪除中...", () => deleteEmployee(button.dataset.deleteEmployee));
         const approveButton = event.target.closest("[data-approve-employee]");
-        if (approveButton) approveEmployee(approveButton.dataset.approveEmployee);
+        if (approveButton) withButtonBusy(approveButton, "核准中...", () => approveEmployee(approveButton.dataset.approveEmployee));
         const roleButton = event.target.closest("[data-role-index]");
-        if (roleButton) setEmployeeRole(roleButton.dataset.roleIndex, roleButton.dataset.roleValue);
+        if (roleButton) withButtonBusy(roleButton, "寫入中...", () => setEmployeeRole(roleButton.dataset.roleIndex, roleButton.dataset.roleValue));
       });
       $("requestReviewList").addEventListener("click", event => {
         const approve = event.target.closest("[data-approve]");
         const reject = event.target.closest("[data-reject]");
-        if (approve) reviewRequest(approve.dataset.approve, "approved");
-        if (reject) reviewRequest(reject.dataset.reject, "rejected");
+        if (approve) withButtonBusy(approve, "審核中...", () => reviewRequest(approve.dataset.approve, "approved"));
+        if (reject) withButtonBusy(reject, "審核中...", () => reviewRequest(reject.dataset.reject, "rejected"));
       });
       $("logTable").addEventListener("click", event => {
         const timeButton = event.target.closest("[data-log-time-save]");
-        if (timeButton) updateLogTime(timeButton.dataset.logTimeSave);
+        if (timeButton) withButtonBusy(timeButton, "寫入中...", () => updateLogTime(timeButton.dataset.logTimeSave));
         const button = event.target.closest("[data-log-status]");
-        if (button) updateLogStatus(button.dataset.logStatus, button.dataset.status);
+        if (button) withButtonBusy(button, "寫入中...", () => updateLogStatus(button.dataset.logStatus, button.dataset.status));
       });
     }
 
