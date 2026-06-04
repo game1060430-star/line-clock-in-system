@@ -1422,6 +1422,8 @@
       const input = document.querySelector(`[data-log-time="${CSS.escape(logId)}"]`);
       const actualTime = input?.value || "";
       if (!actualTime) return alert("請輸入時間。");
+      const originalLog = logs.find(log => log.logId === logId);
+      if (!originalLog) return alert("找不到這筆打卡紀錄。");
       try {
         const result = await apiCall("updateClockLogTime", { logId, actualTime });
         logs = logs.map(log => log.logId === logId ? Object.assign({}, log, {
@@ -1434,7 +1436,29 @@
         alert("打卡時間已修改，工時已重新計算。");
         syncFromSheet();
       } catch (error) {
-        alert(`修改時間失敗：${error.message}`);
+        const message = String(error.message || error);
+        if (!message.includes("Unknown action")) {
+          alert(`修改時間失敗：${message}`);
+          return;
+        }
+        if (!confirm("後端尚未支援直接修改時間。要改用備援方式：取消原紀錄並新增修正後紀錄嗎？")) return;
+        try {
+          await apiCall("updateClockLogStatus", { logId, status: "cancelled" });
+          await apiCall("clock", {
+            lineUserId: originalLog.lineUserId,
+            employeeName: originalLog.name,
+            date: originalLog.date,
+            type: originalLog.type,
+            actualTime,
+            source: "管理者修改時間",
+            locationStatus: "管理者修改時間",
+            note: `原紀錄 ${logId} 改為 ${actualTime}`
+          });
+          await syncFromSheet();
+          alert("已用備援方式完成修改：原紀錄已取消，並新增修正後紀錄。");
+        } catch (fallbackError) {
+          alert(`備援修改仍失敗：${fallbackError.message}`);
+        }
       }
     }
 
