@@ -734,6 +734,7 @@
     let quickPunchRequested = false;
     let syncInFlight = null;
     let launchHandled = false;
+    let lastSyncAt = 0;
 
     const $ = id => document.getElementById(id);
     const pad = value => String(value).padStart(2, "0");
@@ -886,10 +887,13 @@
         requests = (data.requests || []).map(normalizeRequest);
         summaries = data.summaries || [];
         saveCachedData();
+        lastSyncAt = Date.now();
         renderAll();
+        return true;
       } catch (error) {
         console.warn(error);
         $("profileStatus").textContent = `同步失敗：${error.message}`;
+        return false;
       } finally {
         syncInFlight = null;
       }
@@ -940,6 +944,18 @@
 
     function hasActiveClock(lineUserId, date, type) {
       return activeLogsFor(lineUserId, date).some(log => log.type === type);
+    }
+
+    function hasActiveClockForEmployee(employee, date, type) {
+      return logs.some(log =>
+        log.status !== "取消" &&
+        String(log.date || "").startsWith(date) &&
+        log.type === type &&
+        (
+          log.lineUserId === employee.lineUserId ||
+          (employee.name && log.name === employee.name)
+        )
+      );
     }
 
     function canConfirmQuickPunch() {
@@ -1222,6 +1238,27 @@
     async function confirmPunch() {
       if (punchSubmitting) return;
       if (!currentPosition) return alert("尚未取得 GPS 定位。");
+      if (syncInFlight || Date.now() - lastSyncAt > 15000) {
+        $("confirmPunchBtn").disabled = true;
+        $("quickConfirmPunchBtn").disabled = true;
+        $("confirmPunchBtn").textContent = "確認今日紀錄中...";
+        $("quickConfirmPunchBtn").textContent = "確認今日紀錄中...";
+        $("quickGpsStatus").textContent = "正在確認今日打卡紀錄...";
+        const synced = await syncFromSheet();
+        $("confirmPunchBtn").textContent = "確認打卡";
+        $("quickConfirmPunchBtn").textContent = "確認打卡";
+        if (!synced) {
+          $("confirmPunchBtn").disabled = false;
+          $("quickConfirmPunchBtn").disabled = !canConfirmQuickPunch();
+          showStatusModal("無法確認打卡紀錄", "目前無法讀取最新紀錄，請稍後再按一次，避免重複或錯誤打卡。", "error");
+          return;
+        }
+        if (quickPunchRequested) {
+          openQuickPunchModal();
+        } else {
+          $("confirmPunchBtn").disabled = false;
+        }
+      }
       const employee = quickPunchRequested
         ? (currentLineEmployee() || { lineUserId: currentProfile.userId, name: currentProfile.displayName || "未命名員工", status: "啟用" })
         : selectedEmployee();
@@ -1254,10 +1291,10 @@
       }
       const actualTime = nowParts().time.slice(0, 5);
       const date = nowParts().date;
-      if (hasActiveClock(employee.lineUserId, date, punchType)) {
+      if (hasActiveClockForEmployee(employee, date, punchType)) {
         return alert(`今天已經有${punchType}打卡紀錄，請不要重複打卡。如需調整時間，請聯絡管理者修改。`);
       }
-      const missingClockIn = punchType === "下班" && !hasActiveClock(employee.lineUserId, date, "上班");
+      const missingClockIn = punchType === "下班" && !hasActiveClockForEmployee(employee, date, "上班");
       if (missingClockIn && !confirm("今天尚未有上班打卡紀錄。仍要送出下班卡嗎？送出後請記得申請補上班卡，工時才會計算。")) return;
       punchSubmitting = true;
       $("confirmPunchBtn").disabled = true;
