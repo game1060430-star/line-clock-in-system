@@ -32,7 +32,7 @@
     }
     button, input, select, textarea { font: inherit; max-width: 100%; min-width: 0; }
     button { cursor: pointer; }
-    .app { width: min(980px, 100%); margin: 0 auto; padding: 12px 12px 92px; }
+    .app { width: min(980px, 100%); margin: 0 auto; padding: 12px 12px 152px; }
     .topbar {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -230,10 +230,20 @@
     .badge.bad { background: var(--soft-red); color: var(--red); }
     .badge.off { background: #e0e7ff; color: #3730a3; }
     .admin-menu {
+      position: fixed;
+      left: 50%;
+      bottom: calc(74px + env(safe-area-inset-bottom));
+      z-index: 41;
+      width: min(980px, 100%);
+      transform: translateX(-50%);
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
-      margin-bottom: 10px;
+      padding: 8px 10px;
+      background: rgba(245, 247, 244, 0.96);
+      border-top: 1px solid var(--line);
+      box-shadow: 0 -8px 24px rgba(23, 33, 27, 0.08);
+      backdrop-filter: blur(10px);
     }
     .admin-menu button {
       min-height: 42px;
@@ -254,30 +264,60 @@
       border-left: 6px solid #cbd5e1;
       border-radius: 8px;
       background: #fff;
-      padding: 10px;
+      padding: 9px;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 8px;
-      align-items: center;
+      gap: 6px;
+      align-content: start;
+      min-height: 94px;
     }
     .dashboard-row.working { border-left-color: var(--amber); background: #fffbeb; }
     .dashboard-row.done { border-left-color: #3730a3; background: #eef2ff; }
     .dashboard-row.absent { border-left-color: #94a3b8; background: #f8fafc; color: #64748b; }
     .dashboard-times {
       margin-top: 4px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
+      display: grid;
+      gap: 2px;
       color: var(--muted);
       font-size: 12px;
       font-weight: 800;
     }
-    .attendance-summary {
+    .compact-stats {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-      margin-bottom: 10px;
+      gap: 6px;
+      margin-top: 8px;
     }
+    .compact-stat {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfb;
+      padding: 7px 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      min-width: 0;
+    }
+    .compact-stat span { color: var(--muted); font-size: 11px; font-weight: 900; }
+    .compact-stat b { font-size: 17px; }
+    .attendance-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 8px;
+      align-items: center;
+    }
+    .summary-pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fbfcfb;
+      padding: 6px 10px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .summary-pill b { color: var(--text); font-size: 14px; }
     .employee-card-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -464,14 +504,19 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .hidden { display: none !important; }
     @media (max-width: 760px) {
-      .app { padding: 8px 8px 128px; }
+      .app { padding: 8px 8px 176px; }
       .topbar { grid-template-columns: 1fr; }
       .profile { width: 100%; }
       .profile strong, .profile span { white-space: normal; }
       .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-left: 8px; padding-right: 8px; }
+      .admin-menu { bottom: calc(118px + env(safe-area-inset-bottom)); padding-left: 8px; padding-right: 8px; }
       .admin-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .dashboard-list { grid-template-columns: 1fr; }
-      .attendance-summary { grid-template-columns: 1fr; }
+      .dashboard-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+      .dashboard-row { min-height: 88px; padding: 6px; border-left-width: 4px; }
+      .dashboard-row strong { font-size: 12px; line-height: 1.25; }
+      .dashboard-times { font-size: 10px; }
+      .dashboard-row .badge { font-size: 10px; padding: 4px 5px; justify-self: start; }
+      .compact-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       .employee-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .month-calendar { gap: 4px; }
       .calendar-day { min-height: 92px; padding: 5px; border-left-width: 4px; }
@@ -626,13 +671,13 @@
           </div>
 
           <div class="panel" data-admin-section="dashboard">
-            <h3>今日即時儀表板</h3>
-            <div class="grid-3" style="margin-bottom:10px;">
-              <div class="stat"><span>已上班</span><b id="todayClockInCount">0</b></div>
-              <div class="stat"><span>上班中</span><b id="todayWorkingCount">0</b></div>
-              <div class="stat"><span>未上班</span><b id="todayAbsentCount">0</b></div>
-            </div>
+            <h3>今日上班狀況</h3>
             <div id="todayDashboard" class="dashboard-list"></div>
+            <div class="compact-stats">
+              <div class="compact-stat"><span>已上班</span><b id="todayClockInCount">0</b></div>
+              <div class="compact-stat"><span>上班中</span><b id="todayWorkingCount">0</b></div>
+              <div class="compact-stat"><span>未上班</span><b id="todayAbsentCount">0</b></div>
+            </div>
           </div>
 
           <div class="panel hidden" data-admin-section="hours">
@@ -1926,14 +1971,10 @@
       }
       $("adminHoursList").innerHTML = `
         <div class="attendance-summary">
-          <div class="stat"><span>已選員工</span><b>${selectedEmployees.length}</b></div>
-          <div class="stat"><span>合計出勤天數</span><b>${totalSummary.workDays}</b></div>
-          <div class="stat"><span>合計總工時</span><b>${Number(totalSummary.hours || 0).toFixed(1)}</b></div>
-        </div>
-        <div class="attendance-summary">
-          <div class="stat"><span>目前月曆</span><b>${escapeHtml(employee.name || "未命名")}</b></div>
-          <div class="stat"><span>個人出勤天數</span><b>${summary.workDays}</b></div>
-          <div class="stat"><span>個人總工時</span><b>${Number(summary.totalHours || 0).toFixed(1)}</b></div>
+          <span class="summary-pill">已選 <b>${selectedEmployees.length}</b> 人</span>
+          <span class="summary-pill">合計 <b>${Number(totalSummary.hours || 0).toFixed(1)}</b> 小時</span>
+          <span class="summary-pill">目前月曆：<b>${escapeHtml(employee.name || "未命名")}</b></span>
+          <span class="summary-pill">個人 <b>${Number(summary.totalHours || 0).toFixed(1)}</b> 小時</span>
         </div>
         <div class="month-calendar">
           ${["日", "一", "二", "三", "四", "五", "六"].map(day => `<div class="calendar-head">${day}</div>`).join("")}
