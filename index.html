@@ -272,6 +272,57 @@
       font-size: 12px;
       font-weight: 800;
     }
+    .attendance-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .month-calendar {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .calendar-head {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      text-align: center;
+      padding: 4px 0;
+    }
+    .calendar-day {
+      min-height: 104px;
+      border: 1px solid var(--line);
+      border-left: 5px solid #cbd5e1;
+      border-radius: 8px;
+      background: #fff;
+      padding: 7px;
+      display: grid;
+      align-content: start;
+      gap: 5px;
+    }
+    .calendar-day.blank { visibility: hidden; }
+    .calendar-day.ok { border-left-color: var(--primary); background: #f0fbf4; }
+    .calendar-day.warn { border-left-color: var(--amber); background: #fffbeb; }
+    .calendar-day.bad { border-left-color: var(--red); background: #fff5f5; }
+    .calendar-day.off { color: #94a3b8; background: #f8fafc; }
+    .calendar-date {
+      display: flex;
+      justify-content: space-between;
+      gap: 4px;
+      align-items: center;
+      font-weight: 900;
+      font-size: 13px;
+    }
+    .calendar-times {
+      display: grid;
+      gap: 2px;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+    .calendar-times small { color: var(--muted); font-weight: 800; }
     .list { display: grid; gap: 8px; }
     .row {
       border: 1px solid var(--line);
@@ -360,6 +411,11 @@
       .nav { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-left: 8px; padding-right: 8px; }
       .admin-menu { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .dashboard-list { grid-template-columns: 1fr; }
+      .attendance-summary { grid-template-columns: 1fr; }
+      .month-calendar { gap: 4px; }
+      .calendar-day { min-height: 92px; padding: 5px; border-left-width: 4px; }
+      .calendar-date, .calendar-times { font-size: 11px; }
+      .calendar-head { font-size: 11px; }
       .grid, .grid-3 { grid-template-columns: 1fr; }
       .panel { padding: 10px; }
       .table-wrap { overflow-x: visible; }
@@ -502,7 +558,7 @@
         <div id="adminArea" class="hidden">
           <div class="admin-menu" id="adminMenu">
             <button class="active" type="button" data-admin-tab="dashboard">即時儀表板</button>
-            <button type="button" data-admin-tab="hours">員工工時</button>
+            <button type="button" data-admin-tab="hours">員工月曆</button>
             <button type="button" data-admin-tab="employees">員工名單</button>
             <button type="button" data-admin-tab="requests">補卡審核</button>
             <button type="button" data-admin-tab="manual">管理補卡</button>
@@ -521,18 +577,22 @@
           </div>
 
           <div class="panel hidden" data-admin-section="hours">
-            <h3>員工工時</h3>
+            <h3>員工出勤月曆</h3>
             <div class="grid" style="margin-bottom:10px;">
+              <div>
+                <label for="adminHoursEmployeeSelect">員工</label>
+                <select id="adminHoursEmployeeSelect"></select>
+              </div>
               <div>
                 <label for="adminHoursMonthInput">月份</label>
                 <input id="adminHoursMonthInput" type="month">
               </div>
               <div>
                 <label>&nbsp;</label>
-                <button id="refreshAdminHoursBtn" class="btn blue" type="button">重新計算</button>
+                <button id="refreshAdminHoursBtn" class="btn blue" type="button">重新整理</button>
               </div>
             </div>
-            <div id="adminHoursList" class="list"></div>
+            <div id="adminHoursList"></div>
           </div>
 
           <div class="panel hidden" data-admin-section="settings">
@@ -1608,6 +1668,7 @@
       if (activeAdminSection === "dashboard") {
         renderTodayDashboard();
       } else if (activeAdminSection === "hours") {
+        renderAdminHoursEmployeeSelect();
         renderAdminHoursList();
       } else if (activeAdminSection === "employees") {
         renderEmployeeList();
@@ -1680,6 +1741,18 @@
       if (current) $("logEmployeeSelect").value = current;
     }
 
+    function renderAdminHoursEmployeeSelect() {
+      const select = $("adminHoursEmployeeSelect");
+      const current = select.value;
+      const activeEmployees = employees.filter(isActiveEmployee);
+      select.innerHTML = activeEmployees.length
+        ? activeEmployees.map(employee => `<option value="${escapeHtml(employeeKey(employee))}">${escapeHtml(employee.name || "(未命名)")}</option>`).join("")
+        : `<option value="">尚未建立員工</option>`;
+      if (current && activeEmployees.some(employee => employeeKey(employee) === current)) {
+        select.value = current;
+      }
+    }
+
     function renderRequestReviewList() {
       const pending = requests.filter(request => request.status === "待審核");
       $("requestReviewList").innerHTML = pending.length ? pending.map(request => `
@@ -1717,7 +1790,7 @@
       $("todayWorkingCount").textContent = rows.filter(row => row.state === "working").length;
       $("todayAbsentCount").textContent = rows.filter(row => row.state === "absent").length;
       $("todayDashboard").innerHTML = rows.length ? rows.map(row => `
-        <div class="dashboard-row ${row.state}">
+        <div class="dashboard-row ${row.state}" data-dashboard-employee="${escapeHtml(employeeKey(row.employee))}">
           <div>
             <strong>${escapeHtml(row.employee.name || "未命名員工")}</strong>
             <div class="dashboard-times">
@@ -1733,21 +1806,118 @@
     function renderAdminHoursList() {
       const month = $("adminHoursMonthInput").value || nowParts().month;
       const activeEmployees = employees.filter(isActiveEmployee);
-      $("adminHoursList").innerHTML = activeEmployees.length ? activeEmployees.map(employee => {
-        const summary = calculateEmployeeMonthSummary(employee, month);
-        return `
-          <div class="row">
-            <div>
-              <strong>${escapeHtml(employee.name || "未命名員工")}</strong><br>
-              <small>${escapeHtml(month)}｜出勤 ${summary.workDays} 天</small>
-            </div>
-            <div class="stat" style="min-width:120px;">
-              <span>總工時</span>
-              <b>${Number(summary.totalHours || 0).toFixed(1)}</b>
-            </div>
+      if (!activeEmployees.length) {
+        $("adminHoursList").innerHTML = `<div class="empty">尚未建立員工。</div>`;
+        return;
+      }
+      let selectedKey = $("adminHoursEmployeeSelect").value;
+      if (!selectedKey) {
+        selectedKey = employeeKey(activeEmployees[0]);
+        $("adminHoursEmployeeSelect").value = selectedKey;
+      }
+      const employee = activeEmployees.find(item => employeeKey(item) === selectedKey) || activeEmployees[0];
+      const summary = calculateEmployeeMonthSummary(employee, month);
+      const calendar = buildEmployeeMonthCalendar(employee, month);
+      $("adminHoursList").innerHTML = `
+        <div class="attendance-summary">
+          <div class="stat"><span>員工</span><b>${escapeHtml(employee.name || "未命名")}</b></div>
+          <div class="stat"><span>出勤天數</span><b>${summary.workDays}</b></div>
+          <div class="stat"><span>總工時</span><b>${Number(summary.totalHours || 0).toFixed(1)}</b></div>
+        </div>
+        <div class="month-calendar">
+          ${["日", "一", "二", "三", "四", "五", "六"].map(day => `<div class="calendar-head">${day}</div>`).join("")}
+          ${calendar.map(day => renderAttendanceDay(day)).join("")}
+        </div>
+      `;
+    }
+
+    function buildEmployeeMonthCalendar(employee, month) {
+      const [year, monthIndex] = month.split("-").map(Number);
+      const first = new Date(year, monthIndex - 1, 1);
+      const dayCount = new Date(year, monthIndex, 0).getDate();
+      const blanks = Array.from({ length: first.getDay() }, () => ({ blank: true }));
+      const days = Array.from({ length: dayCount }, (_, index) => {
+        const day = index + 1;
+        const date = `${month}-${pad(day)}`;
+        return buildAttendanceDay(employee, date, day);
+      });
+      return blanks.concat(days);
+    }
+
+    function buildAttendanceDay(employee, date, day) {
+      const dayLogs = logs
+        .filter(log =>
+          log.status !== "取消" &&
+          log.date === date &&
+          (log.lineUserId === employee.lineUserId || (employee.name && log.name === employee.name))
+        )
+        .sort((a, b) => (a.actualTime || "").localeCompare(b.actualTime || ""));
+      const ins = dayLogs.filter(log => log.type === "上班");
+      const outs = dayLogs.filter(log => log.type === "下班");
+      const inTime = ins[0]?.actualTime || "";
+      const outTime = outs[outs.length - 1]?.actualTime || "";
+      const requestList = requests.filter(request =>
+        request.date === date &&
+        (request.lineUserId === employee.lineUserId || (employee.name && request.name === employee.name))
+      );
+      const hours = calculateDayHours(dayLogs);
+      let state = "off";
+      let label = "無紀錄";
+      if (inTime && outTime) {
+        state = "ok";
+        label = "正常";
+      } else if (inTime && !outTime) {
+        state = date === nowParts().date ? "warn" : "bad";
+        label = date === nowParts().date ? "上班中" : "缺下班";
+      } else if (!inTime && outTime) {
+        state = "bad";
+        label = "缺上班";
+      } else if (requestList.length) {
+        state = "warn";
+        label = "有補卡";
+      }
+      return { date, day, inTime, outTime, hours, state, label, requests: requestList };
+    }
+
+    function calculateDayHours(dayLogs) {
+      const records = dayLogs
+        .map(log => ({ type: log.type, minutes: minutesFromTime(log.roundedTime || log.actualTime) }))
+        .filter(log => log.type === "上班" || log.type === "下班")
+        .sort((a, b) => a.minutes - b.minutes);
+      let openStart = null;
+      let total = 0;
+      records.forEach(record => {
+        if (record.type === "上班") {
+          openStart = record.minutes;
+          return;
+        }
+        if (record.type === "下班" && openStart !== null && record.minutes > openStart) {
+          total += record.minutes - openStart;
+          openStart = null;
+        }
+      });
+      return Math.round((total / 60) * 10) / 10;
+    }
+
+    function renderAttendanceDay(day) {
+      if (day.blank) return `<div class="calendar-day blank"></div>`;
+      const requestText = day.requests.length
+        ? `<small>補卡：${escapeHtml(day.requests.map(request => `${request.type}${request.claimedTime ? " " + request.claimedTime : ""}${request.status ? " " + request.status : ""}`).join("、"))}</small>`
+        : "";
+      return `
+        <div class="calendar-day ${day.state}">
+          <div class="calendar-date">
+            <span>${day.day}</span>
+            <span class="badge ${day.state === "ok" ? "ok" : (day.state === "bad" ? "bad" : (day.state === "warn" ? "warn" : ""))}">${escapeHtml(day.label)}</span>
           </div>
-        `;
-      }).join("") : `<div class="empty">尚未建立員工。</div>`;
+          <div class="calendar-times">
+            <span>上 ${escapeHtml(day.inTime || "--:--")}</span>
+            <span>下 ${escapeHtml(day.outTime || "--:--")}</span>
+            <small>${Number(day.hours || 0).toFixed(1)} 小時</small>
+            ${requestText}
+          </div>
+        </div>
+      `;
     }
 
     function renderLogTable() {
@@ -1888,7 +2058,15 @@
         const button = event.target.closest("[data-admin-tab]");
         if (button) switchAdminSection(button.dataset.adminTab);
       });
+      $("todayDashboard").addEventListener("click", event => {
+        const row = event.target.closest("[data-dashboard-employee]");
+        if (!row) return;
+        switchAdminSection("hours");
+        $("adminHoursEmployeeSelect").value = row.dataset.dashboardEmployee;
+        renderAdminHoursList();
+      });
       $("refreshAdminHoursBtn").addEventListener("click", renderAdminHoursList);
+      $("adminHoursEmployeeSelect").addEventListener("change", renderAdminHoursList);
       $("adminHoursMonthInput").addEventListener("change", renderAdminHoursList);
       $("logEmployeeSelect").addEventListener("change", renderLogTable);
       $("logMonthInput").addEventListener("change", () => {
