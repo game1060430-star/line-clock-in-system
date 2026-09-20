@@ -8,7 +8,7 @@ const SHEETS = {
 };
 
 const HEADERS = {
-  [SHEETS.EMPLOYEES]: ['LINE ID', '員工姓名', '狀態(啟用/停用)', '權限(員工/管理者)'],
+  [SHEETS.EMPLOYEES]: ['LINE ID', '員工姓名', '狀態(啟用/停用)', '權限(員工/管理者)', '店別'],
   [SHEETS.LOGS]: ['LINE ID', '員工姓名', '日期', '實際打卡時間', '系統修正時間(30分單位)', '打卡類型(上班/下班)', '備註/來源(正常打卡/管理者補卡)', '紀錄ID', '狀態(納入/取消)'],
   [SHEETS.REQUESTS]: ['申請ID', 'LINE ID', '員工姓名', '日期', '類型(上班/下班)', '員工自述時間', '原因備註', '狀態(待審核/已核准/已拒絕)']
 };
@@ -52,7 +52,7 @@ function setup() {
   Object.keys(HEADERS).forEach(name => ensureSheet(name, HEADERS[name]));
   const employees = rowsAsObjects(SHEETS.EMPLOYEES);
   if (employees.length === 0) {
-    appendObject(SHEETS.EMPLOYEES, { 'LINE ID': '', '員工姓名': '測試員工', '狀態(啟用/停用)': '啟用' });
+    appendObject(SHEETS.EMPLOYEES, { 'LINE ID': '', '員工姓名': '測試員工', '店別': '未分店', '狀態(啟用/停用)': '啟用' });
   }
   seedSettings();
 }
@@ -324,6 +324,7 @@ function saveEmployee(payload) {
   const row = {
     'LINE ID': lineUserId,
     '員工姓名': employeeName,
+    '店別': payload.storeName || payload['店別'] || existing['店別'] || '未分店',
     '狀態(啟用/停用)': payload.status || payload['狀態(啟用/停用)'] || existing['狀態(啟用/停用)'] || '啟用',
     '權限(員工/管理者)': payload.role || payload['權限(員工/管理者)'] || existing['權限(員工/管理者)'] || '員工'
   };
