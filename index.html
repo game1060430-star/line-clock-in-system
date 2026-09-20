@@ -1830,6 +1830,32 @@
       }
     }
 
+    async function saveEmployeeStore(index) {
+      const employee = employees[Number(index)];
+      if (!employee) return alert("找不到這位員工。");
+      const input = document.querySelector(`[data-store-index="${CSS.escape(String(index))}"]`);
+      const storeName = (input?.value || "").trim() || "未分店";
+      const payload = {
+        lineUserId: employee.lineUserId,
+        name: employee.name,
+        storeName,
+        status: employee.status || "啟用",
+        role: employee.role || "員工"
+      };
+      employee.storeName = storeName;
+      employeeStoreMap[employeeKey(employee)] = storeName;
+      saveEmployeeStoreMap();
+      saveCachedData();
+      renderAdmin();
+      try {
+        await apiCall("saveEmployee", payload);
+        syncFromSheet();
+        alert("店別已儲存。");
+      } catch (error) {
+        alert(`已先在本機儲存店別；後端同步失敗：${error.message}`);
+      }
+    }
+
     async function reviewRequest(requestId, status) {
       const finalTimeInput = document.querySelector(`[data-final-time="${CSS.escape(requestId)}"]`);
       const payload = {
@@ -1901,8 +1927,13 @@
           <div>
             <strong>${escapeHtml(employee.name)}</strong><br>
             <small>店別：${escapeHtml(employeeStore(employee))}｜LINE ID：${escapeHtml(employee.lineUserId || "未綁定")}｜${escapeHtml(employee.status)}｜${escapeHtml(effectiveRole(employee))}</small>
+            <div style="margin-top:8px;">
+              <label for="employeeStore-${index}">修改店別</label>
+              <input id="employeeStore-${index}" type="text" value="${escapeHtml(employeeStore(employee))}" data-store-index="${index}" placeholder="例如：一店、二店">
+            </div>
           </div>
           <div class="actions">
+            <button class="btn blue" type="button" data-save-store-index="${index}">儲存店別</button>
             ${employee.status === "待審核" ? `<button class="btn primary" type="button" data-approve-employee="${index}">核准</button>` : `<button class="btn ${effectiveRole(employee) === "管理者" ? "ghost" : "blue"}" type="button" data-role-index="${index}" data-role-value="${effectiveRole(employee) === "管理者" ? "員工" : "管理者"}">${effectiveRole(employee) === "管理者" ? "改為員工" : "設為管理者"}</button>`}
             <button class="btn red" type="button" data-delete-employee="${escapeHtml(employee.lineUserId)}">刪除</button>
           </div>
@@ -2494,6 +2525,8 @@
         if (approveButton) withButtonBusy(approveButton, "核准中...", () => approveEmployee(approveButton.dataset.approveEmployee));
         const roleButton = event.target.closest("[data-role-index]");
         if (roleButton) withButtonBusy(roleButton, "寫入中...", () => setEmployeeRole(roleButton.dataset.roleIndex, roleButton.dataset.roleValue));
+        const storeButton = event.target.closest("[data-save-store-index]");
+        if (storeButton) withButtonBusy(storeButton, "寫入中...", () => saveEmployeeStore(storeButton.dataset.saveStoreIndex));
       });
       $("requestReviewList").addEventListener("click", event => {
         const approve = event.target.closest("[data-approve]");
