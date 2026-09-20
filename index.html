@@ -231,7 +231,7 @@
     .badge.off { background: #e0e7ff; color: #3730a3; }
     .admin-menu {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
       margin-bottom: 10px;
     }
@@ -300,8 +300,10 @@
       display: grid;
       align-content: start;
       gap: 5px;
+      cursor: pointer;
     }
     .calendar-day.blank { visibility: hidden; }
+    .calendar-day.selected { outline: 3px solid rgba(36, 111, 159, 0.24); border-color: var(--blue); }
     .calendar-day.ok { border-left-color: var(--primary); background: #f0fbf4; }
     .calendar-day.warn { border-left-color: var(--amber); background: #fffbeb; }
     .calendar-day.bad { border-left-color: var(--red); background: #fff5f5; }
@@ -323,6 +325,36 @@
       overflow-wrap: anywhere;
     }
     .calendar-times small { color: var(--muted); font-weight: 800; }
+    .day-detail {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+    }
+    .day-detail h4 { margin: 0 0 8px; font-size: 16px; }
+    .day-detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      align-items: end;
+    }
+    .day-record {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      margin-bottom: 8px;
+      background: #fbfcfb;
+    }
+    .day-record-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      font-weight: 900;
+    }
     .list { display: grid; gap: 8px; }
     .row {
       border: 1px solid var(--line);
@@ -416,6 +448,7 @@
       .calendar-day { min-height: 92px; padding: 5px; border-left-width: 4px; }
       .calendar-date, .calendar-times { font-size: 11px; }
       .calendar-head { font-size: 11px; }
+      .day-detail-grid { grid-template-columns: 1fr; }
       .grid, .grid-3 { grid-template-columns: 1fr; }
       .panel { padding: 10px; }
       .table-wrap { overflow-x: visible; }
@@ -560,9 +593,6 @@
             <button class="active" type="button" data-admin-tab="dashboard">即時儀表板</button>
             <button type="button" data-admin-tab="hours">員工月曆</button>
             <button type="button" data-admin-tab="employees">員工名單</button>
-            <button type="button" data-admin-tab="requests">補卡審核</button>
-            <button type="button" data-admin-tab="manual">管理補卡</button>
-            <button type="button" data-admin-tab="logs">打卡紀錄</button>
             <button type="button" data-admin-tab="settings">系統設定</button>
           </div>
 
@@ -795,6 +825,7 @@
     let syncInFlight = null;
     let launchHandled = false;
     let lastSyncAt = 0;
+    let selectedAttendanceDate = "";
 
     const $ = id => document.getElementById(id);
     const pad = value => String(value).padStart(2, "0");
@@ -1545,6 +1576,33 @@
       }
     }
 
+    async function calendarManualClock() {
+      const employee = selectedAdminHoursEmployee();
+      if (!employee) return alert("請先選擇員工。");
+      if (!selectedAttendanceDate) return alert("請先點選要補卡的日期。");
+      const payload = {
+        lineUserId: employee.lineUserId,
+        employeeName: employee.name,
+        date: selectedAttendanceDate,
+        type: $("calendarManualType").value,
+        actualTime: $("calendarManualTime").value,
+        source: "管理者補卡",
+        locationStatus: "管理者補卡",
+        note: $("calendarManualNote").value.trim()
+      };
+      if (!payload.actualTime) return alert("請填補卡時間。");
+      try {
+        const result = await apiCall("clock", payload);
+        upsertLocalClock(result);
+        saveCachedData();
+        renderAdminHoursList();
+        syncFromSheet();
+        alert("補打卡已新增。");
+      } catch (error) {
+        alert(`補打卡失敗：${error.message}`);
+      }
+    }
+
     async function updateLogStatus(logId, status) {
       if (!logId) return alert("這筆舊紀錄沒有紀錄ID，無法取消。請用新版產生的紀錄操作。");
       const label = status === "cancelled" ? "取消納入" : "恢復納入";
@@ -1818,6 +1876,11 @@
       const employee = activeEmployees.find(item => employeeKey(item) === selectedKey) || activeEmployees[0];
       const summary = calculateEmployeeMonthSummary(employee, month);
       const calendar = buildEmployeeMonthCalendar(employee, month);
+      if (!selectedAttendanceDate || !selectedAttendanceDate.startsWith(month)) {
+        const today = nowParts().date;
+        const importantDay = calendar.find(day => !day.blank && (day.state === "bad" || day.pendingRequests > 0 || day.date === today));
+        selectedAttendanceDate = importantDay?.date || `${month}-01`;
+      }
       $("adminHoursList").innerHTML = `
         <div class="attendance-summary">
           <div class="stat"><span>員工</span><b>${escapeHtml(employee.name || "未命名")}</b></div>
@@ -1827,6 +1890,9 @@
         <div class="month-calendar">
           ${["日", "一", "二", "三", "四", "五", "六"].map(day => `<div class="calendar-head">${day}</div>`).join("")}
           ${calendar.map(day => renderAttendanceDay(day)).join("")}
+        </div>
+        <div id="attendanceDayDetail">
+          ${renderAttendanceDayDetail(employee, selectedAttendanceDate)}
         </div>
       `;
     }
@@ -1860,10 +1926,14 @@
         request.date === date &&
         (request.lineUserId === employee.lineUserId || (employee.name && request.name === employee.name))
       );
+      const pendingRequests = requestList.filter(request => request.status === "待審核").length;
       const hours = calculateDayHours(dayLogs);
       let state = "off";
       let label = "無紀錄";
-      if (inTime && outTime) {
+      if (pendingRequests > 0) {
+        state = "warn";
+        label = "需補卡審核";
+      } else if (inTime && outTime) {
         state = "ok";
         label = "正常";
       } else if (inTime && !outTime) {
@@ -1876,7 +1946,7 @@
         state = "warn";
         label = "有補卡";
       }
-      return { date, day, inTime, outTime, hours, state, label, requests: requestList };
+      return { date, day, inTime, outTime, hours, state, label, requests: requestList, pendingRequests };
     }
 
     function calculateDayHours(dayLogs) {
@@ -1905,7 +1975,7 @@
         ? `<small>補卡：${escapeHtml(day.requests.map(request => `${request.type}${request.claimedTime ? " " + request.claimedTime : ""}${request.status ? " " + request.status : ""}`).join("、"))}</small>`
         : "";
       return `
-        <div class="calendar-day ${day.state}">
+        <div class="calendar-day ${day.state} ${day.date === selectedAttendanceDate ? "selected" : ""}" data-attendance-date="${escapeHtml(day.date)}">
           <div class="calendar-date">
             <span>${day.day}</span>
             <span class="badge ${day.state === "ok" ? "ok" : (day.state === "bad" ? "bad" : (day.state === "warn" ? "warn" : ""))}">${escapeHtml(day.label)}</span>
@@ -1915,6 +1985,112 @@
             <span>下 ${escapeHtml(day.outTime || "--:--")}</span>
             <small>${Number(day.hours || 0).toFixed(1)} 小時</small>
             ${requestText}
+          </div>
+        </div>
+      `;
+    }
+
+    function selectedAdminHoursEmployee() {
+      const activeEmployees = employees.filter(isActiveEmployee);
+      const selectedKey = $("adminHoursEmployeeSelect").value;
+      return activeEmployees.find(employee => employeeKey(employee) === selectedKey) || activeEmployees[0];
+    }
+
+    function recordsForEmployeeDate(employee, date) {
+      return logs
+        .filter(log =>
+          log.date === date &&
+          (log.lineUserId === employee.lineUserId || (employee.name && log.name === employee.name))
+        )
+        .sort((a, b) => (a.actualTime || "").localeCompare(b.actualTime || ""));
+    }
+
+    function requestsForEmployeeDate(employee, date) {
+      return requests
+        .filter(request =>
+          request.date === date &&
+          (request.lineUserId === employee.lineUserId || (employee.name && request.name === employee.name))
+        )
+        .sort((a, b) => (a.claimedTime || "").localeCompare(b.claimedTime || ""));
+    }
+
+    function renderAttendanceDayDetail(employee, date) {
+      if (!employee || !date) return `<div class="day-detail"><div class="empty">請先選擇員工與日期。</div></div>`;
+      const dayLogs = recordsForEmployeeDate(employee, date);
+      const dayRequests = requestsForEmployeeDate(employee, date);
+      return `
+        <div class="day-detail">
+          <h4>${escapeHtml(employee.name || "未命名員工")}｜${escapeHtml(date)}</h4>
+          <div class="grid-3" style="margin-bottom:10px;">
+            <div class="stat"><span>打卡紀錄</span><b>${dayLogs.length}</b></div>
+            <div class="stat"><span>補卡申請</span><b>${dayRequests.length}</b></div>
+            <div class="stat"><span>當日工時</span><b>${Number(calculateDayHours(dayLogs.filter(log => log.status !== "取消")) || 0).toFixed(1)}</b></div>
+          </div>
+          <h4>打卡紀錄</h4>
+          ${dayLogs.length ? dayLogs.map(log => `
+            <div class="day-record">
+              <div class="day-record-title">
+                <span>${escapeHtml(log.type)}｜${escapeHtml(log.status === "取消" ? "取消" : "納入")}</span>
+                <span class="badge ${log.status === "取消" ? "bad" : (log.note.includes("範圍外") ? "warn" : "ok")}">${escapeHtml(log.note.includes("範圍外") ? "範圍外" : (log.status === "取消" ? "取消" : "納入"))}</span>
+              </div>
+              <div class="day-detail-grid">
+                <div>
+                  <label>實際時間</label>
+                  <input type="time" value="${escapeHtml(log.actualTime)}" data-log-time="${escapeHtml(log.logId)}">
+                </div>
+                <div>
+                  <label>系統修正</label>
+                  <input type="text" value="${escapeHtml(log.roundedTime)}" disabled>
+                </div>
+                <button class="btn blue" type="button" data-log-time-save="${escapeHtml(log.logId)}">儲存時間</button>
+                <button class="btn ${log.status === "取消" ? "primary" : "red"}" type="button" data-log-status="${escapeHtml(log.logId)}" data-status="${log.status === "取消" ? "active" : "cancelled"}">${log.status === "取消" ? "恢復納入" : "取消納入"}</button>
+              </div>
+              <small>${escapeHtml(log.note || "無備註")}</small>
+            </div>
+          `).join("") : `<div class="empty">這一天沒有打卡紀錄，可以直接在下方補卡。</div>`}
+
+          <h4>補卡申請</h4>
+          ${dayRequests.length ? dayRequests.map(request => `
+            <div class="day-record">
+              <div class="day-record-title">
+                <span>${escapeHtml(request.type)}補卡｜${escapeHtml(request.status)}</span>
+                <span class="badge ${request.status === "待審核" ? "warn" : (request.status === "已拒絕" ? "bad" : "ok")}">${escapeHtml(request.status)}</span>
+              </div>
+              <div class="day-detail-grid">
+                <div>
+                  <label>員工自述時間</label>
+                  <input type="time" value="${escapeHtml(request.claimedTime || "06:30")}" data-final-time="${escapeHtml(request.requestId)}">
+                </div>
+                <div>
+                  <label>原因</label>
+                  <input type="text" value="${escapeHtml(request.reason || "")}" disabled>
+                </div>
+                ${request.status === "待審核" ? `
+                  <button class="btn primary" type="button" data-approve="${escapeHtml(request.requestId)}">核准並寫入</button>
+                  <button class="btn red" type="button" data-reject="${escapeHtml(request.requestId)}">拒絕</button>
+                ` : `<div class="span-2"><span class="badge ${request.status === "已拒絕" ? "bad" : "ok"}">${escapeHtml(request.status)}</span></div>`}
+              </div>
+            </div>
+          `).join("") : `<div class="empty">這一天沒有補卡申請。</div>`}
+
+          <h4>管理者直接補卡</h4>
+          <div class="day-detail-grid">
+            <div>
+              <label>類型</label>
+              <select id="calendarManualType">
+                <option value="上班">上班</option>
+                <option value="下班">下班</option>
+              </select>
+            </div>
+            <div>
+              <label>時間</label>
+              <input id="calendarManualTime" type="time" value="${dayLogs.some(log => log.type === "上班" && log.status !== "取消") ? "13:00" : "06:30"}">
+            </div>
+            <div class="span-2">
+              <label>備註</label>
+              <textarea id="calendarManualNote" placeholder="例如忘記打卡、老闆補登。"></textarea>
+            </div>
+            <button class="btn amber span-2" type="button" data-calendar-manual-clock>新增這一天補卡</button>
           </div>
         </div>
       `;
@@ -2067,7 +2243,42 @@
       });
       $("refreshAdminHoursBtn").addEventListener("click", renderAdminHoursList);
       $("adminHoursEmployeeSelect").addEventListener("change", renderAdminHoursList);
-      $("adminHoursMonthInput").addEventListener("change", renderAdminHoursList);
+      $("adminHoursMonthInput").addEventListener("change", () => {
+        selectedAttendanceDate = "";
+        renderAdminHoursList();
+      });
+      $("adminHoursList").addEventListener("click", event => {
+        const day = event.target.closest("[data-attendance-date]");
+        if (day) {
+          selectedAttendanceDate = day.dataset.attendanceDate;
+          renderAdminHoursList();
+          return;
+        }
+        const manualButton = event.target.closest("[data-calendar-manual-clock]");
+        if (manualButton) {
+          withButtonBusy(manualButton, "寫入中...", calendarManualClock);
+          return;
+        }
+        const approve = event.target.closest("[data-approve]");
+        const reject = event.target.closest("[data-reject]");
+        if (approve) {
+          withButtonBusy(approve, "審核中...", () => reviewRequest(approve.dataset.approve, "approved"));
+          return;
+        }
+        if (reject) {
+          withButtonBusy(reject, "審核中...", () => reviewRequest(reject.dataset.reject, "rejected"));
+          return;
+        }
+        const timeButton = event.target.closest("[data-log-time-save]");
+        if (timeButton) {
+          withButtonBusy(timeButton, "寫入中...", () => updateLogTime(timeButton.dataset.logTimeSave));
+          return;
+        }
+        const statusButton = event.target.closest("[data-log-status]");
+        if (statusButton) {
+          withButtonBusy(statusButton, "寫入中...", () => updateLogStatus(statusButton.dataset.logStatus, statusButton.dataset.status));
+        }
+      });
       $("logEmployeeSelect").addEventListener("change", renderLogTable);
       $("logMonthInput").addEventListener("change", () => {
         $("logDateInput").value = "";
