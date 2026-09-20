@@ -33,7 +33,7 @@
     button, input, select, textarea { font: inherit; max-width: 100%; min-width: 0; }
     button { cursor: pointer; }
     .app { width: min(980px, 100%); margin: 0 auto; padding: 12px 12px 152px; }
-    body.admin-mode .app { padding-bottom: 78px; }
+    body.admin-mode .app { padding-bottom: 118px; }
     .topbar {
       display: grid;
       grid-template-columns: 1fr auto;
@@ -414,6 +414,17 @@
       padding: 12px;
     }
     .day-detail h4 { margin: 0 0 8px; font-size: 16px; }
+    .day-summary-stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .day-summary-stats .stat {
+      min-height: 58px;
+      padding: 8px;
+    }
+    .day-summary-stats .stat b { font-size: 18px; }
     .day-detail-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -518,7 +529,7 @@
     .hidden { display: none !important; }
     @media (max-width: 760px) {
       .app { padding: 8px 8px 128px; }
-      body.admin-mode .app { padding-bottom: 78px; }
+      body.admin-mode .app { padding-bottom: 136px; }
       .topbar { grid-template-columns: 1fr; }
       .profile { width: 100%; }
       .profile strong, .profile span { white-space: normal; }
@@ -540,6 +551,10 @@
       .calendar-day { min-height: 92px; padding: 5px; border-left-width: 4px; }
       .calendar-date, .calendar-times { font-size: 11px; }
       .calendar-head { font-size: 11px; }
+      .day-summary-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+      .day-summary-stats .stat { min-height: 54px; padding: 6px; }
+      .day-summary-stats .stat span { font-size: 10px; }
+      .day-summary-stats .stat b { font-size: 15px; }
       .day-detail-grid { grid-template-columns: 1fr; }
       .grid, .grid-3 { grid-template-columns: 1fr; }
       .panel { padding: 10px; }
@@ -2223,7 +2238,7 @@
       return `
         <div class="day-detail">
           <h4>${escapeHtml(employee.name || "未命名員工")}｜${escapeHtml(date)}</h4>
-          <div class="grid-3" style="margin-bottom:10px;">
+          <div class="day-summary-stats">
             <div class="stat"><span>打卡紀錄</span><b>${dayLogs.length}</b></div>
             <div class="stat"><span>補卡申請</span><b>${dayRequests.length}</b></div>
             <div class="stat"><span>當日工時</span><b>${Number(calculateDayHours(dayLogs.filter(log => log.status !== "取消")) || 0).toFixed(1)}</b></div>
