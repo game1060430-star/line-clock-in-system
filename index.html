@@ -1299,23 +1299,30 @@
       };
     }
 
+    function taipeiDate(value) {
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) return null;
+      // Sheet Date cells are serialized in UTC. Use Taiwan's fixed UTC+8
+      // offset, including the 1899 date used for time-only Sheet cells.
+      return new Date(parsed.getTime() + 8 * 60 * 60 * 1000);
+    }
+
     function toDateText(value) {
       if (!value) return "";
-      const text = String(value);
-      const match = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (match) return `${match[1]}-${match[2]}-${match[3]}`;
-      const parsed = new Date(text);
-      if (!Number.isNaN(parsed.getTime())) return `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`;
+      const text = String(value).trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+      const parsed = taipeiDate(text);
+      if (parsed) return parsed.toISOString().slice(0, 10);
       return text;
     }
 
     function toTimeText(value) {
       if (!value) return "";
-      const text = String(value);
+      const text = String(value).trim();
       const plain = text.match(/^(\d{1,2}):(\d{2})/);
       if (plain) return `${pad(Number(plain[1]))}:${plain[2]}`;
-      const iso = text.match(/T(\d{2}):(\d{2})/);
-      if (iso) return `${iso[1]}:${iso[2]}`;
+      const parsed = taipeiDate(text);
+      if (parsed) return parsed.toISOString().slice(11, 16);
       return text;
     }
 
