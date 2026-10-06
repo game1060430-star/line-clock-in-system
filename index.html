@@ -1556,11 +1556,7 @@
         if (missingClockIn) {
           showStatusModal("下班打卡已送出", `今天沒有上班卡，請到工時查詢申請補上班卡。這一天會等補卡核准後才計算工時。`, "error");
         } else {
-          showStatusModal("打卡完成", `${punchType}打卡完成，實際 ${actualTime}，系統歸入 ${roundToNearestHalfHour(actualTime)}。`, "success");
-        }
-        if (!missingClockIn && window.liff && liff.isInClient()) {
-          await delay(1200);
-          liff.closeWindow();
+          showStatusModal(`${punchType}打卡成功`, `${employee.name}，${date} ${actualTime} 已成功儲存。計算工時時間：${roundToNearestHalfHour(actualTime)}。`, "success");
         }
       } catch (error) {
         showStatusModal("打卡失敗", error.message, "error");
