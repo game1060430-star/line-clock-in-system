@@ -1210,6 +1210,28 @@
       return Number(match[1]) * 60 + Number(match[2]);
     }
 
+    function analyzeWorkSessions(dayLogs) {
+      const records = dayLogs.filter(log => log.status !== "取消" && ["上班", "下班"].includes(log.type))
+        .slice().sort((a, b) => minutesFromTime(a.actualTime) - minutesFromTime(b.actualTime));
+      let open = null;
+      let unmatchedOut = false;
+      let duplicate = false;
+      const sessions = [];
+      records.forEach(log => {
+        if (log.type === "上班") {
+          if (open) { duplicate = true; return; }
+          open = log;
+        } else if (open) {
+          const minutes = Math.max(0, minutesFromTime(log.roundedTime || log.actualTime) - minutesFromTime(open.roundedTime || open.actualTime));
+          sessions.push({ start: open.actualTime, end: log.actualTime, minutes });
+          open = null;
+        } else {
+          unmatchedOut = true;
+        }
+      });
+      return { sessions, open, unmatchedOut, duplicate, minutes: sessions.reduce((sum, item) => sum + item.minutes, 0) };
+    }
+
     function calculateLocalSummary(lineUserId, month) {
       const byDate = {};
       activeLogsFor(lineUserId, month).forEach(log => {
@@ -1218,23 +1240,7 @@
       });
       let totalHours = 0;
       Object.values(byDate).forEach(dayLogs => {
-        const records = dayLogs
-          .map(log => ({ type: log.type, minutes: minutesFromTime(log.roundedTime || log.actualTime) }))
-          .filter(log => log.type === "上班" || log.type === "下班")
-          .sort((a, b) => a.minutes - b.minutes);
-        let openStart = null;
-        let dayMinutes = 0;
-        records.forEach(record => {
-          if (record.type === "上班") {
-            openStart = record.minutes;
-            return;
-          }
-          if (record.type === "下班" && openStart !== null && record.minutes > openStart) {
-            dayMinutes += record.minutes - openStart;
-            openStart = null;
-          }
-        });
-        totalHours += dayMinutes / 60;
+        totalHours += analyzeWorkSessions(dayLogs).minutes / 60;
       });
       return { month, totalHours: Math.round(totalHours * 10) / 10 };
     }
@@ -1252,22 +1258,7 @@
       let totalMinutes = 0;
       let workDays = 0;
       Object.values(byDate).forEach(dayLogs => {
-        const records = dayLogs
-          .map(log => ({ type: log.type, minutes: minutesFromTime(log.roundedTime || log.actualTime) }))
-          .filter(log => log.type === "上班" || log.type === "下班")
-          .sort((a, b) => a.minutes - b.minutes);
-        let openStart = null;
-        let dayMinutes = 0;
-        records.forEach(record => {
-          if (record.type === "上班") {
-            openStart = record.minutes;
-            return;
-          }
-          if (record.type === "下班" && openStart !== null && record.minutes > openStart) {
-            dayMinutes += record.minutes - openStart;
-            openStart = null;
-          }
-        });
+        const dayMinutes = analyzeWorkSessions(dayLogs).minutes;
         if (dayMinutes > 0) workDays += 1;
         totalMinutes += dayMinutes;
       });
@@ -1526,10 +1517,12 @@
       }
       const actualTime = nowParts().time.slice(0, 5);
       const date = nowParts().date;
-      if (hasActiveClockForEmployee(employee, date, punchType)) {
-        return alert(`今天已經有${punchType}打卡紀錄，請不要重複打卡。如需調整時間，請聯絡管理者修改。`);
+      const dayRecords = recordsForEmployeeDate(employee, date).filter(log => log.status !== "取消");
+      const lastClock = dayRecords[dayRecords.length - 1];
+      if (lastClock?.type === punchType) {
+        return alert(punchType === "上班" ? "你目前已上班，請先打下班卡，再開始下一段班。" : "上一段已打下班卡，請不要重複打卡。下一段班請先打上班卡。");
       }
-      const missingClockIn = punchType === "下班" && !hasActiveClockForEmployee(employee, date, "上班");
+      const missingClockIn = punchType === "下班" && !analyzeWorkSessions(dayRecords).open;
       if (missingClockIn && !confirm("今天尚未有上班打卡紀錄。仍要送出下班卡嗎？送出後請記得申請補上班卡，工時才會計算。")) return;
       punchSubmitting = true;
       $("confirmPunchBtn").disabled = true;
@@ -1565,7 +1558,6 @@
         } else {
           showStatusModal("打卡完成", `${punchType}打卡完成，實際 ${actualTime}，系統歸入 ${roundToNearestHalfHour(actualTime)}。`, "success");
         }
-        syncFromSheet();
         if (!missingClockIn && window.liff && liff.isInClient()) {
           await delay(1200);
           liff.closeWindow();
@@ -1591,11 +1583,9 @@
       $("summaryHours").textContent = `${Number(cached?.totalHours || 0).toFixed(1)} 小時`;
       if (!employee.lineUserId || !remote) return;
       try {
-        const summary = await apiCall("getMonthlySummary", { lineUserId: employee.lineUserId, month });
-        summaries = summaries.filter(item => !(item.lineUserId === employee.lineUserId && item.month === month));
-        summaries.push(Object.assign({ lineUserId: employee.lineUserId, month }, summary));
-        saveCachedData();
-        $("summaryHours").textContent = `${Number(calculateLocalSummary(employee.lineUserId, month)?.totalHours || summary?.totalHours || 0).toFixed(1)} 小時`;
+        if (!await syncFromSheet()) throw new Error("無法同步最新打卡紀錄");
+        const summary = calculateLocalSummary(employee.lineUserId, month);
+        $("summaryHours").textContent = `${Number(summary.totalHours).toFixed(1)} 小時`;
       } catch (error) {
         $("queryIdentity").classList.remove("hidden");
         $("queryIdentity").textContent = `已先顯示快取資料，同步失敗：${error.message}`;
@@ -1717,7 +1707,6 @@
         const result = await apiCall("clock", payload);
         upsertLocalClock(result);
         $("manualNote").value = "";
-        syncFromSheet();
         alert("補打卡已新增，工時已重新計算。");
       } catch (error) {
         alert(`補打卡失敗：${error.message}`);
@@ -1745,7 +1734,6 @@
         saveCachedData();
         renderAdminHoursEmployeeSelect();
         renderAdminHoursList();
-        syncFromSheet();
         alert("補打卡已新增。");
       } catch (error) {
         alert(`補打卡失敗：${error.message}`);
@@ -1761,7 +1749,6 @@
         logs = logs.map(log => log.logId === logId ? Object.assign({}, log, { status: result.status }) : log);
         saveCachedData();
         renderAdmin();
-        syncFromSheet();
         alert(`已${label}，工時已重新計算。`);
       } catch (error) {
         alert(`操作失敗：${error.message}`);
@@ -1785,7 +1772,6 @@
         saveCachedData();
         renderAdmin();
         alert("打卡時間已修改，工時已重新計算。");
-        syncFromSheet();
       } catch (error) {
         const message = String(error.message || error);
         if (!message.includes("Unknown action")) {
@@ -2063,7 +2049,8 @@
         const outs = employeeLogs.filter(log => log.type === "下班").sort((a, b) => a.actualTime.localeCompare(b.actualTime));
         const inTime = ins[0]?.actualTime || "";
         const outTime = outs[outs.length - 1]?.actualTime || "";
-        const state = inTime && outTime ? "done" : (inTime ? "working" : "absent");
+        const work = analyzeWorkSessions(employeeLogs);
+        const state = work.open ? "working" : (work.sessions.length ? "done" : "absent");
         const label = state === "done" ? "已下班" : (state === "working" ? "上班中" : "未上班");
         const badge = state === "done" ? "off" : (state === "working" ? "warn" : "bad");
         return { employee, inTime, outTime, state, label, badge };
@@ -2157,9 +2144,15 @@
       if (pendingRequests > 0) {
         state = "warn";
         label = "需補卡審核";
+      } else if (analyzeWorkSessions(dayLogs).open) {
+        state = date === nowParts().date ? "warn" : "bad";
+        label = date === nowParts().date ? "上班中" : "缺下班";
+      } else if (analyzeWorkSessions(dayLogs).unmatchedOut || analyzeWorkSessions(dayLogs).duplicate) {
+        state = "bad";
+        label = "需核對打卡";
       } else if (inTime && outTime) {
         state = "ok";
-        label = "正常";
+        label = analyzeWorkSessions(dayLogs).sessions.length > 1 ? "兩頭班" : "正常";
       } else if (inTime && !outTime) {
         state = date === nowParts().date ? "warn" : "bad";
         label = date === nowParts().date ? "上班中" : "缺下班";
@@ -2174,23 +2167,7 @@
     }
 
     function calculateDayHours(dayLogs) {
-      const records = dayLogs
-        .map(log => ({ type: log.type, minutes: minutesFromTime(log.roundedTime || log.actualTime) }))
-        .filter(log => log.type === "上班" || log.type === "下班")
-        .sort((a, b) => a.minutes - b.minutes);
-      let openStart = null;
-      let total = 0;
-      records.forEach(record => {
-        if (record.type === "上班") {
-          openStart = record.minutes;
-          return;
-        }
-        if (record.type === "下班" && openStart !== null && record.minutes > openStart) {
-          total += record.minutes - openStart;
-          openStart = null;
-        }
-      });
-      return Math.round((total / 60) * 10) / 10;
+      return Math.round(analyzeWorkSessions(dayLogs).minutes / 60 * 10) / 10;
     }
 
     function renderAttendanceDay(day) {
