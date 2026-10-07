@@ -349,6 +349,10 @@
     .employee-card strong { font-size: 15px; overflow-wrap: anywhere; }
     .employee-card small { color: var(--muted); font-weight: 800; line-height: 1.4; }
     .employee-card b { font-size: 20px; }
+    .employee-card.attendance-bad { border-left-color: #dc2626; }
+    .employee-card.attendance-warn { border-left-color: #b45309; }
+    .attendance-bad strong, .employee-card small.attendance-bad { color: #b91c1c; }
+    .attendance-warn strong, .employee-card small.attendance-warn { color: #9a3412; }
     .store-card {
       border-left-color: var(--blue);
       background: #f8fbff;
@@ -1461,7 +1465,18 @@
       return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     }
 
+    let punchConfirming = false;
     async function confirmPunch() {
+      if (punchConfirming) return;
+      punchConfirming = true;
+      try {
+        await confirmPunchOnce();
+      } finally {
+        punchConfirming = false;
+      }
+    }
+
+    async function confirmPunchOnce() {
       if (punchSubmitting) return;
       if (!currentPosition) return alert("尚未取得 GPS 定位。");
       if (syncInFlight || Date.now() - lastSyncAt > 15000) {
@@ -1962,6 +1977,17 @@
       if (current) $("logEmployeeSelect").value = current;
     }
 
+    function employeeAttendanceStatus(employee, month) {
+      const days = buildEmployeeMonthCalendar(employee, month).filter(day => !day.blank);
+      const problems = days.filter(day => day.state === "bad" || day.pendingRequests > 0);
+      if (problems.length) {
+        const labels = [...new Set(problems.map(day => day.label))];
+        return { state: "bad", label: `${labels.join("、")}｜${problems.length} 天待處理` };
+      }
+      if (days.some(day => day.label === "上班中")) return { state: "warn", label: "上班中・尚未打下班" };
+      return { state: "ok", label: "" };
+    }
+
     function renderAdminHoursEmployeeSelect() {
       const month = $("adminHoursMonthInput").value || nowParts().month;
       const activeEmployees = employees.filter(isActiveEmployee).filter(employee => employeeStore(employee) === selectedStoreName);
@@ -1973,10 +1999,12 @@
         const key = employeeKey(employee);
         const summary = calculateEmployeeMonthSummary(employee, month);
         const selected = selectedAdminEmployeeKeys.includes(key);
+        const attendance = employeeAttendanceStatus(employee, month);
         return `
-          <button class="employee-card ${selected ? "selected" : ""}" type="button" data-admin-employee-card="${escapeHtml(key)}">
+          <button class="employee-card ${selected ? "selected" : ""} attendance-${attendance.state}" type="button" data-admin-employee-card="${escapeHtml(key)}">
             <strong>${escapeHtml(employee.name || "(未命名)")}</strong>
             <small>${escapeHtml(month)}｜出勤 ${summary.workDays} 天</small>
+            ${attendance.label ? `<small class="attendance-${attendance.state}">${escapeHtml(attendance.label)}</small>` : ""}
             <b>${Number(summary.totalHours || 0).toFixed(1)} 小時</b>
           </button>
         `;
