@@ -1185,8 +1185,7 @@
         String(log.date || "").startsWith(date) &&
         log.type === type &&
         (
-          log.lineUserId === employee.lineUserId ||
-          (employee.name && log.name === employee.name)
+          recordBelongsToEmployee(log, employee)
         )
       );
     }
@@ -1206,6 +1205,16 @@
 
     function employeeStore(employee) {
       return (employee?.storeName || employeeStoreMap[employeeKey(employee)] || "未分店").trim() || "未分店";
+    }
+
+    function recordBelongsToEmployee(record, employee) {
+      if (!record || !employee) return false;
+      const recordId = String(record.lineUserId || "").trim();
+      const employeeId = String(employee.lineUserId || "").trim();
+      if (recordId) return Boolean(employeeId && recordId === employeeId);
+      const name = String(employee.name || "").trim();
+      return Boolean(name && String(record.name || "").trim() === name &&
+        employees.filter(item => String(item.name || "").trim() === name).length === 1);
     }
 
     function recordEmployeeKey(record) {
@@ -1259,7 +1268,7 @@
       logs.filter(log =>
         log.status !== "取消" &&
         String(log.date || "").startsWith(month) &&
-        ((employee.lineUserId && log.lineUserId === employee.lineUserId) || (!employee.lineUserId && log.name === employee.name))
+        recordBelongsToEmployee(log, employee)
       ).forEach(log => {
         if (!byDate[log.date]) byDate[log.date] = [];
         byDate[log.date].push(log);
@@ -2094,7 +2103,7 @@
       const activeEmployees = employees.filter(isActiveEmployee);
       const todayLogs = logs.filter(log => log.date === today && log.status !== "取消");
       const rows = activeEmployees.map(employee => {
-        const employeeLogs = todayLogs.filter(log => log.lineUserId === employee.lineUserId || (!employee.lineUserId && log.name === employee.name));
+        const employeeLogs = todayLogs.filter(log => recordBelongsToEmployee(log, employee));
         const ins = employeeLogs.filter(log => log.type === "上班").sort((a, b) => a.actualTime.localeCompare(b.actualTime));
         const outs = employeeLogs.filter(log => log.type === "下班").sort((a, b) => a.actualTime.localeCompare(b.actualTime));
         const inTime = ins[0]?.actualTime || "";
@@ -2176,7 +2185,7 @@
         .filter(log =>
           log.status !== "取消" &&
           log.date === date &&
-          (log.lineUserId === employee.lineUserId || (employee.name && log.name === employee.name))
+          (recordBelongsToEmployee(log, employee))
         )
         .sort((a, b) => (a.actualTime || "").localeCompare(b.actualTime || ""));
       const ins = dayLogs.filter(log => log.type === "上班");
@@ -2185,7 +2194,7 @@
       const outTime = outs[outs.length - 1]?.actualTime || "";
       const requestList = requests.filter(request =>
         request.date === date &&
-        (request.lineUserId === employee.lineUserId || (employee.name && request.name === employee.name))
+        (recordBelongsToEmployee(request, employee))
       );
       const pendingRequests = requestList.filter(request => request.status === "待審核").length;
       const hours = calculateDayHours(dayLogs);
@@ -2251,7 +2260,7 @@
       return logs
         .filter(log =>
           log.date === date &&
-          (log.lineUserId === employee.lineUserId || (employee.name && log.name === employee.name))
+          (recordBelongsToEmployee(log, employee))
         )
         .sort((a, b) => (a.actualTime || "").localeCompare(b.actualTime || ""));
     }
@@ -2260,7 +2269,7 @@
       return requests
         .filter(request =>
           request.date === date &&
-          (request.lineUserId === employee.lineUserId || (employee.name && request.name === employee.name))
+          (recordBelongsToEmployee(request, employee))
         )
         .sort((a, b) => (a.claimedTime || "").localeCompare(b.claimedTime || ""));
     }
