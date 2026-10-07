@@ -798,7 +798,7 @@
           </div>
 
           <div class="panel hidden" data-admin-section="requests">
-            <h3>補卡申請審核</h3>
+            <h3>未知 LINE 打卡與補卡審核</h3>
             <div id="requestReviewList" class="list"></div>
           </div>
 
@@ -1192,7 +1192,7 @@
     }
 
     function canConfirmQuickPunch() {
-      return Boolean(currentPosition && currentProfile.userId && isActiveEmployee(currentLineEmployee()) && !punchSubmitting);
+      return Boolean(currentPosition && currentProfile.userId && !punchSubmitting);
     }
 
     function isActiveEmployee(employee) {
@@ -1294,7 +1294,7 @@
         date: toDateText(row["日期"]),
         type: row["類型(上班/下班)"] || "",
         claimedTime: toTimeText(row["員工自述時間"]),
-        reason: row["原因備註"] || "",
+        reason: row["原因備註"] || row.reason || "",
         status: row["狀態(待審核/已核准/已拒絕)"] || "待審核"
       };
     }
@@ -1354,7 +1354,7 @@
       const employee = currentLineEmployee();
       $("employeeBindWrap").classList.toggle("hidden", Boolean(employee));
       const label = currentProfile.userId
-        ? `${currentProfile.displayName || "LINE 使用者"}（尚未核准）`
+        ? `${currentProfile.displayName || "LINE 使用者"}（打卡後由管理者審核）`
         : "未取得 LINE 身分，請從 LINE 打卡入口重新開啟";
       $("employeeSelect").innerHTML = `<option value="">${escapeHtml(label)}</option>`;
       $("bindEmployeeBtn").classList.toggle("hidden", !currentProfile.userId || Boolean(employee));
@@ -1446,7 +1446,7 @@
     function openQuickPunchModal() {
       const employee = currentLineEmployee();
       $("quickPunchTitle").textContent = `${punchType}打卡`;
-      $("quickEmployeeName").textContent = employee?.name || (currentProfile.userId ? "讀取員工資料中" : "讀取 LINE 身分中");
+      $("quickEmployeeName").textContent = employee?.name || (currentProfile.userId ? `${currentProfile.displayName}（打卡待審核）` : "讀取 LINE 身分中");
       $("quickTimeNow").textContent = nowParts().time;
       $("quickGpsStatus").textContent = currentPosition
         ? `${gpsInRange ? "範圍內" : "範圍外"}｜${Math.round(currentDistance)} 公尺`
@@ -1509,29 +1509,8 @@
       const employee = selectedEmployee();
       if (!employee) return alert("尚未確認員工身分，請稍候再試。");
       const existingEmployee = currentLineEmployee();
-      if (!existingEmployee) {
-        punchSubmitting = true;
-        $("quickConfirmPunchBtn").disabled = true;
-        $("quickConfirmPunchBtn").textContent = "送出中...";
-        closeQuickPunchModal();
-        showStatusModal("已送出員工審核", "你的 LINE 身分已送給管理者，核准後才能使用打卡功能。", "error");
-        try {
-          await apiCall("saveEmployee", { lineUserId: currentProfile.userId, name: employee.name, status: "待審核" });
-          await syncFromSheet();
-        } catch (error) {
-          showStatusModal("送出審核失敗", error.message, "error");
-        } finally {
-          punchSubmitting = false;
-          $("quickConfirmPunchBtn").textContent = "確認打卡";
-        }
-        return;
-      }
       if (!isActiveEmployee(existingEmployee)) {
-        showStatusModal("尚未核准", "請等管理者核准員工身分後再打卡。", "error");
-        return;
-      }
-      if (employee.status && employee.status !== "啟用") {
-        showStatusModal("尚未核准", "請等管理者核准員工身分後再打卡。", "error");
+        await submitUnknownPunch();
         return;
       }
       const actualTime = nowParts().time.slice(0, 5);
@@ -1580,6 +1559,40 @@
         $("confirmPunchBtn").textContent = "確認打卡";
         $("quickConfirmPunchBtn").textContent = "確認打卡";
         if (currentPosition) $("confirmPunchBtn").disabled = !canConfirmQuickPunch();
+        $("quickConfirmPunchBtn").disabled = !canConfirmQuickPunch();
+      }
+    }
+
+    async function submitUnknownPunch() {
+      const date = nowParts().date;
+      const time = nowParts().time.slice(0, 5);
+      const records = requests.filter(request => request.lineUserId === currentProfile.userId && request.date === date && request.status !== "已拒絕" && request.reason.startsWith("[LINE打卡待審核]"))
+        .map(request => ({ type: request.type, actualTime: request.claimedTime }))
+        .concat(logs.filter(log => log.lineUserId === currentProfile.userId && log.date === date && log.status !== "取消"))
+        .sort((a, b) => a.actualTime.localeCompare(b.actualTime));
+      if (records.some(record => record.type === punchType && record.actualTime === time) || records[records.length - 1]?.type === punchType) {
+        showStatusModal("已收到打卡", "這段班的打卡已送出，請勿重複送出。下一次請選擇另一種打卡類型。", "error");
+        return;
+      }
+      punchSubmitting = true;
+      $("confirmPunchBtn").disabled = true;
+      $("quickConfirmPunchBtn").disabled = true;
+      closeQuickPunchModal();
+      showStatusModal("正在送出打卡", "正在保存打卡時間與 LINE 名稱。", "loading");
+      try {
+        await apiCall("saveCorrectionRequest", {
+          lineUserId: currentProfile.userId,
+          employeeName: currentProfile.displayName || "LINE 使用者",
+          date, type: punchType, claimedTime: time,
+          reason: `[LINE打卡待審核] LINE名稱：${currentProfile.displayName || "LINE 使用者"}；${gpsInRange ? "範圍內" : "範圍外"}；距離 ${Math.round(currentDistance)} 公尺；${$("punchNote").value.trim()}`
+        });
+        await syncFromSheet();
+        showStatusModal(`${punchType}打卡已送出`, `${currentProfile.displayName}，${date} ${time} 已保存，待管理者確認是否採用。下班時仍可繼續打卡。`, "success");
+      } catch (error) {
+        showStatusModal("打卡未送出", error.message, "error");
+      } finally {
+        punchSubmitting = false;
+        $("confirmPunchBtn").disabled = !canConfirmQuickPunch();
         $("quickConfirmPunchBtn").disabled = !canConfirmQuickPunch();
       }
     }
@@ -1875,7 +1888,7 @@
       }
     }
 
-    async function reviewRequest(requestId, status) {
+    async function reviewRequest(requestId, status, addEmployee = false) {
       const finalTimeInput = document.querySelector(`[data-final-time="${CSS.escape(requestId)}"]`);
       const payload = {
         requestId,
@@ -1883,12 +1896,23 @@
         finalTime: finalTimeInput ? finalTimeInput.value : ""
       };
       try {
+        const request = requests.find(item => item.requestId === requestId);
         await apiCall("reviewCorrectionRequest", payload);
+        if (status === "approved" && addEmployee && request) {
+          const existing = employees.find(employee => employee.lineUserId === request.lineUserId);
+          try {
+            await apiCall("saveEmployee", { lineUserId: request.lineUserId, name: existing?.name || request.name, storeName: existing?.storeName || selectedStoreName || "未分店", status: "啟用", role: existing?.role || "員工" });
+          } catch (error) {
+            await syncFromSheet();
+            alert(`打卡已採用，但新增員工失敗：${error.message}。請到員工管理新增這位員工。`);
+            return;
+          }
+        }
         requests = requests.map(request => request.requestId === requestId ? Object.assign({}, request, { status: status === "approved" ? "已核准" : "已拒絕" }) : request);
         saveCachedData();
         renderAdmin();
         syncFromSheet();
-        alert(status === "approved" ? "已核准並寫入打卡紀錄。" : "已拒絕申請。");
+        alert(status === "approved" ? (addEmployee ? "已採用打卡並新增員工。" : "已核准並寫入打卡紀錄。") : "已拒絕申請。");
       } catch (error) {
         alert(`審核失敗：${error.message}`);
       }
@@ -2051,13 +2075,15 @@
         <div class="row">
           <div>
             <strong>${escapeHtml(request.name)}｜${escapeHtml(request.date)}｜${escapeHtml(request.type)}</strong><br>
-            <small>員工自述：${escapeHtml(request.claimedTime)}｜原因：${escapeHtml(request.reason || "無")}</small>
+            ${request.reason.startsWith("[LINE打卡待審核]") ? `<span class="badge warn">未知 LINE 打卡</span><br><small>LINE ID：${escapeHtml(request.lineUserId)}</small><br>` : ""}
+            <small>${request.reason.startsWith("[LINE打卡待審核]") ? "實際打卡" : "員工自述"}：${escapeHtml(request.claimedTime)}｜${escapeHtml(request.reason || "無")}</small>
             <label style="margin-top:8px;">老闆確認最終時間</label>
             <input type="time" value="${escapeHtml(request.claimedTime || "06:30")}" data-final-time="${escapeHtml(request.requestId)}">
           </div>
           <div class="actions">
-            <button class="btn primary" type="button" data-approve="${escapeHtml(request.requestId)}">核准</button>
-            <button class="btn red" type="button" data-reject="${escapeHtml(request.requestId)}">拒絕</button>
+            <button class="btn primary" type="button" data-approve="${escapeHtml(request.requestId)}">${request.reason.startsWith("[LINE打卡待審核]") ? "採用打卡" : "核准"}</button>
+            ${request.reason.startsWith("[LINE打卡待審核]") ? `<button class="btn blue" type="button" data-adopt-employee="${escapeHtml(request.requestId)}">採用並新增員工</button>` : ""}
+            <button class="btn red" type="button" data-reject="${escapeHtml(request.requestId)}">${request.reason.startsWith("[LINE打卡待審核]") ? "不採用" : "拒絕"}</button>
           </div>
         </div>
       `).join("") : `<div class="empty">目前沒有待審核補卡申請。</div>`;
@@ -2292,7 +2318,7 @@
                 </div>
                 ${request.status === "待審核" ? `
                   <button class="btn primary" type="button" data-approve="${escapeHtml(request.requestId)}">核准並寫入</button>
-                  <button class="btn red" type="button" data-reject="${escapeHtml(request.requestId)}">拒絕</button>
+                  <button class="btn red" type="button" data-reject="${escapeHtml(request.requestId)}">${request.reason.startsWith("[LINE打卡待審核]") ? "不採用" : "拒絕"}</button>
                 ` : `<div class="span-2"><span class="badge ${request.status === "已拒絕" ? "bad" : "ok"}">${escapeHtml(request.status)}</span></div>`}
               </div>
             </div>
@@ -2513,6 +2539,8 @@
         }
         const approve = event.target.closest("[data-approve]");
         const reject = event.target.closest("[data-reject]");
+        const adopt = event.target.closest("[data-adopt-employee]");
+        if (adopt) withButtonBusy(adopt, "審核中...", () => reviewRequest(adopt.dataset.adoptEmployee, "approved", true));
         if (approve) {
           withButtonBusy(approve, "審核中...", () => reviewRequest(approve.dataset.approve, "approved"));
           return;
@@ -2554,6 +2582,8 @@
       $("requestReviewList").addEventListener("click", event => {
         const approve = event.target.closest("[data-approve]");
         const reject = event.target.closest("[data-reject]");
+        const adopt = event.target.closest("[data-adopt-employee]");
+        if (adopt) withButtonBusy(adopt, "審核中...", () => reviewRequest(adopt.dataset.adoptEmployee, "approved", true));
         if (approve) withButtonBusy(approve, "審核中...", () => reviewRequest(approve.dataset.approve, "approved"));
         if (reject) withButtonBusy(reject, "審核中...", () => reviewRequest(reject.dataset.reject, "rejected"));
       });
